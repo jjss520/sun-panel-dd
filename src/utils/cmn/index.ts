@@ -1,0 +1,250 @@
+import moment from 'moment'
+import { h } from 'vue'
+import type { NotificationReactive } from 'naive-ui'
+import { NButton, createDiscreteApi } from 'naive-ui'
+import { useAuthStore, useNoticeStore, useUserStore } from '@/store'
+import { getAuthInfo } from '@/api/system/user'
+import { ss } from '@/utils/storage'
+
+// 用户认证信息缓存键
+const USER_AUTH_INFO_CACHE_KEY = 'USER_AUTH_INFO_CACHE'
+import type { VisitMode } from '@/enums/auth'
+import { getListByDisplayType as getListByDisplayTypeApi } from '@/api/notice'
+
+const noticeStore = useNoticeStore()
+const userStore = useUserStore()
+const authStore = useAuthStore()
+
+const { notification } = createDiscreteApi(['notification'])
+/**
+ * 生成指定时间格式
+ * @param format 时间格式 默认：'YYYY-MM-DD HH:mm:ss'
+ * @returns string
+ */
+export function buildTimeString(format?: string): string {
+  if (!format)
+    format = 'YYYY-MM-DD HH:mm:ss'
+
+  return moment().format(format)
+}
+
+export function timeFormat(timeString?: string) {
+  return moment(timeString).format('YYYY-MM-DD HH:mm:ss')
+}
+
+/**
+ * 创建新的公告
+ * @param timeString
+ */
+export function noticeCreate(info: Notice.NoticeInfo) {
+  const option: any = {
+    title: info.title,
+    content: info.content,
+    meta: info.createTime ? timeFormat(info.createTime) : '',
+  }
+
+  const btns: any = []
+
+  let n: NotificationReactive
+  // 链接按钮
+  if (info.url !== '') {
+    btns.push(
+      h(
+        NButton,
+        {
+          text: true,
+          type: 'info',
+          onClick: () => {
+            window.open(info.url, '_blank')
+            n.destroy()
+          },
+        },
+        {
+          default: () => '打开链接',
+        },
+      ),
+    )
+  }
+  if (info.oneRead === 1) {
+    btns.push(
+      h(
+        NButton,
+        {
+          text: true,
+          type: 'primary',
+          style: { marginLeft: '20px' },
+          onClick: () => {
+            if (info.id) {
+              if (info.isLogin === 1 && userStore.userInfo.username) {
+                noticeStore.setReadByUsername(userStore.userInfo.username, info.id)
+              }
+              else {
+                noticeStore.setReadByGlobal(info.id)
+              }
+            }
+            n.destroy()
+          },
+        },
+        {
+          default: () => '不再提醒',
+        },
+      ),
+    )
+  }
+  option.action = () => btns
+  n = notification.create(option)
+}
+
+export function setTitle(titile: string) {
+  document.title = titile
+}
+
+export function getTitle(titile: string) {
+  document.title = titile
+}
+
+//
+export async function updateLocalUserInfo() {
+  interface Req {
+    user: User.Info
+    visitMode: VisitMode
+  }
+
+  try {
+    // 1. 首先尝试从缓存读取数据
+    const cachedData = ss.get(USER_AUTH_INFO_CACHE_KEY)
+    if (cachedData) {
+      userStore.updateUserInfo({ headImage: cachedData.user.headImage, name: cachedData.user.name })
+      authStore.setUserInfo(cachedData.user)
+      authStore.setVisitMode(cachedData.visitMode)
+      return
+    }
+
+    // 2. 缓存中没有数据，请求接口获取数据
+    const { data } = await getAuthInfo<Req>()
+
+    // 更新store
+    userStore.updateUserInfo({ headImage: data.user.headImage, name: data.user.name })
+    authStore.setUserInfo(data.user)
+    authStore.setVisitMode(data.visitMode)
+
+    // 3. 将数据永久保存到缓存中
+    ss.set(USER_AUTH_INFO_CACHE_KEY, data)
+  } catch (error) {
+    console.error('获取用户认证信息失败', error)
+    // 出错时尝试从缓存获取
+    const cachedData = ss.get(USER_AUTH_INFO_CACHE_KEY)
+    if (cachedData) {
+      userStore.updateUserInfo({ headImage: cachedData.user.headImage, name: cachedData.user.name })
+      authStore.setUserInfo(cachedData.user)
+      authStore.setVisitMode(cachedData.visitMode)
+    }
+  }
+}
+
+export async function getNotice(displayType: number | number[]) {
+  let param: number[]
+  if (typeof displayType === 'number')
+    param = [displayType]
+  else
+    param = displayType
+
+  const { data } = await getListByDisplayTypeApi<Common.ListResponse<Notice.NoticeInfo[]>>(param)
+
+  for (let i = 0; i < data.list.length; i++) {
+    const element = data.list[i]
+    if (element.id && !noticeStore.getReadByNoticeId(element.id, userStore.userInfo.username))
+      noticeCreate(element)
+  }
+}
+
+
+export function getFaviconUrl(url: string): string {
+  // 获取网址的域名
+  const { protocol, host } = new URL(url)
+  const domain = `${protocol}//${host}`
+  // 构建 favicon URL
+  return `${domain}/favicon.ico`
+}
+
+/**
+ * @description: 获取随机码
+ * @param {number} size
+ * @param {array} seed ["a","b"m"c]
+ * @return {string}
+ */
+export function randomCode(size: number, seed?: Array<string>) {
+  seed = seed || ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'm', 'n', 'p', 'Q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+    '2', '3', '4', '5', '6', '7', '8', '9',
+  ]// 数组
+  const seedlength = seed.length// 数组长度
+  let createPassword = ''
+  for (let i = 0; i < size; i++) {
+    const j = Math.floor(Math.random() * seedlength)
+    createPassword += seed[j]
+  }
+  return createPassword
+}
+
+// 复制文字到剪切板
+export async function copyToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard) {
+    // 使用 Clipboard API
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+    catch (err) {
+      console.error('copy fail', err)
+      return false
+    }
+  }
+  else {
+    // 兼容旧版浏览器
+    const textArea = document.createElement('textarea')
+    textArea.value = text
+    document.body.appendChild(textArea)
+    textArea.select()
+
+    try {
+      document.execCommand('copy')
+      return true
+    }
+    catch (err) {
+      console.error('copy fail', err)
+      return false
+    }
+    finally {
+      document.body.removeChild(textArea)
+    }
+  }
+}
+
+export function bytesToSize(bytes: number) {
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']
+  if (bytes === 0)
+    return '0B'
+  const i = parseInt(String(Math.floor(Math.log(bytes) / Math.log(1024))))
+  return `${(bytes / 1024 ** i).toFixed(1)} ${sizes[i]}`
+}
+
+/**
+ * 打开链接时不发送Referer头，解决某些网站403错误的问题
+ * @param url 要打开的链接
+ * @param target 打开方式，默认_blank
+ */
+export function openUrlWithoutReferer(url: string, target: '_self' | '_blank' | '_parent' | '_top' = '_blank') {
+  // 创建一个a标签并设置rel属性来禁用Referer
+  const a = document.createElement('a')
+  a.href = url
+  a.target = target
+  a.rel = 'noreferrer noopener'
+
+  // 模拟点击
+  document.body.appendChild(a)
+  a.click()
+
+  // 清理
+  document.body.removeChild(a)
+}
