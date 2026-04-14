@@ -477,14 +477,14 @@ async function handleItemClick(itemGroupIndex: number, item: Panel.ItemInfo) {
   const publicUrl = normalizeUrl(item.url)
   const lanUrl = normalizeUrl(item.lanUrl)
 
-  // wan_new 模式：直接显示外网，不进行内网探测
-  if (panelState.networkMode === PanelStateNetworkModeEnum.wan_new) {
+  // wan 模式：直接显示外网，不进行内网探测
+  if (panelState.networkMode === PanelStateNetworkModeEnum.wan) {
     openPage(item.openMethod, publicUrl, item.title)
     return
   }
 
-  // lan_new 模式：直接显示内网，不进行内网探测（复制 wan_new 逻辑）
-  if (panelState.networkMode === PanelStateNetworkModeEnum.lan_new) {
+  // lan 模式：直接显示内网，不进行内网探测（复制 wan 逻辑）
+  if (panelState.networkMode === PanelStateNetworkModeEnum.lan) {
     openPage(item.openMethod, lanUrl, item.title)
     return
   }
@@ -492,7 +492,7 @@ async function handleItemClick(itemGroupIndex: number, item: Panel.ItemInfo) {
   // 默认使用公网地址
   let jumpUrl = publicUrl
 
-  // 检查是否需要进行内网探测（wan_old 和 lan_old 模式）
+  // 检查是否需要进行内网探测（auto 和 edit 模式）
   // 条件：有内网地址 AND 内网地址有效 AND 系统配置了PingUrl
   // 注意：这里我们检查原始的 item.lanUrl 是否有效，但使用标准化的 lanUrl 进行跳转
   const shouldCheckIntranet = isValidUrl(item.lanUrl) && systemPingUrl.value
@@ -534,10 +534,10 @@ function handWindowIframeIdLoad(payload: Event) {
 
 // 根据网络模式过滤项目
 function filterItemsByNetworkMode() {
-  // WAN 模式和新 LAN 模式需要过滤（复制原WAN的逻辑）
-  if (panelState.networkMode === PanelStateNetworkModeEnum.wan_new || 
-      panelState.networkMode === PanelStateNetworkModeEnum.wan_old ||
-      panelState.networkMode === PanelStateNetworkModeEnum.lan_new) {
+  // WAN、LAN 和 auto 模式需要过滤
+  if (panelState.networkMode === PanelStateNetworkModeEnum.wan || 
+      panelState.networkMode === PanelStateNetworkModeEnum.auto ||
+      panelState.networkMode === PanelStateNetworkModeEnum.lan) {
     const filteredGroups = items.value.map(group => {
       if (group.items) {
         // 过滤掉lanOnly为1的项目
@@ -549,7 +549,7 @@ function filterItemsByNetworkMode() {
     // 过滤掉没有项目的组
     filterItems.value = filteredGroups.filter(group => !group.items || group.items.length > 0)
   } else {
-    // 只有原 LAN/私密模式下显示所有项目
+    // 只有编辑模式下显示所有项目
     filterItems.value = items.value
   }
 }
@@ -661,9 +661,9 @@ onActivated(() => {
 
 function handleRightMenuSelect(key: string | number) {
   dropdownShow.value = false
-  // LAN 模式（新LAN和原LAN）使用 LAN URL，WAN 模式使用 WAN URL
-  const isLanMode = panelState.networkMode === PanelStateNetworkModeEnum.lan_new || 
-                    panelState.networkMode === PanelStateNetworkModeEnum.lan_old
+  // LAN 模式和编辑模式使用 LAN URL，WAN 和 auto 模式使用 WAN URL
+  const isLanMode = panelState.networkMode === PanelStateNetworkModeEnum.lan || 
+                    panelState.networkMode === PanelStateNetworkModeEnum.edit
   let jumpUrl = isLanMode ? currentRightSelectItem.value?.lanUrl : currentRightSelectItem.value?.url
   if (currentRightSelectItem.value?.lanUrl === '')
     jumpUrl = currentRightSelectItem.value.url
@@ -913,9 +913,9 @@ onMounted(async () => {
   if (panelState.panelConfig.logoText)
     setTitle(panelState.panelConfig.logoText)
 
-  // 确保公开模式下始终使用原 WAN 模式
+  // 确保公开模式下始终使用 auto 模式
   if (authStore.visitMode === VisitMode.VISIT_MODE_PUBLIC) {
-    panelState.setNetworkMode(PanelStateNetworkModeEnum.wan_old)
+    panelState.setNetworkMode(PanelStateNetworkModeEnum.auto)
   }
 
   // 加载书签数据，使用forceRefresh=true确保获取最新排序
@@ -943,10 +943,10 @@ function itemFrontEndSearch(keyword?: string) {
     // 只搜索原有图标（首页书签），不再搜索左侧书签
     for (let i = 0; i < items.value.length; i++) {
       const element = items.value[i].items?.filter((item: Panel.ItemInfo) => {
-        // 首先应用网络模式过滤 - WAN 模式和新 LAN 模式过滤掉 lanOnly 项目
-        const shouldFilterLanOnly = panelState.networkMode === PanelStateNetworkModeEnum.wan_new || 
-                                   panelState.networkMode === PanelStateNetworkModeEnum.wan_old ||
-                                   panelState.networkMode === PanelStateNetworkModeEnum.lan_new
+        // 首先应用网络模式过滤 - wan、auto 和 lan 模式过滤掉 lanOnly 项目
+        const shouldFilterLanOnly = panelState.networkMode === PanelStateNetworkModeEnum.wan || 
+                                   panelState.networkMode === PanelStateNetworkModeEnum.auto ||
+                                   panelState.networkMode === PanelStateNetworkModeEnum.lan
         const networkModeMatch = !shouldFilterLanOnly || item.lanOnly !== 1
         if (!networkModeMatch) return false
 
@@ -1005,8 +1005,8 @@ function handleAddItem(itemIconGroupId?: number) {
 
 // 网络模式切换处理
 function handleChangeNetwork(targetMode: PanelStateNetworkModeEnum) {
-  // 只有切换到原 LAN/编辑模式才需要验证密码
-  if (targetMode === PanelStateNetworkModeEnum.lan_old) {
+  // 只有切换到编辑模式才需要验证密码
+  if (targetMode === PanelStateNetworkModeEnum.edit) {
     // 显示密码输入对话框
     const passwordInput = ref('')
 
@@ -1097,9 +1097,9 @@ function handleChangeNetwork(targetMode: PanelStateNetworkModeEnum) {
     
     // 显示成功提示
     const modeNames = {
-      [PanelStateNetworkModeEnum.wan_old]: '已切换到自动内外网模式（模式状态仅保存在本地）',
-      [PanelStateNetworkModeEnum.wan_new]: '已切换到外网模式（模式状态仅保存在本地）',
-      [PanelStateNetworkModeEnum.lan_new]: '已切换到内网模式（模式状态仅保存在本地）',
+      [PanelStateNetworkModeEnum.auto]: '已切换到自动内外网模式（模式状态仅保存在本地）',
+      [PanelStateNetworkModeEnum.wan]: '已切换到外网模式（模式状态仅保存在本地）',
+      [PanelStateNetworkModeEnum.lan]: '已切换到内网模式（模式状态仅保存在本地）',
     }
     if (modeNames[targetMode]) {
       ms.success(modeNames[targetMode])
@@ -1110,9 +1110,9 @@ function handleChangeNetwork(targetMode: PanelStateNetworkModeEnum) {
 // 循环切换网络模式（只切换三种公开模式）
 function handleCycleNetworkMode() {
   const modes = [
-    PanelStateNetworkModeEnum.wan_old,   // 自动内外网
-    PanelStateNetworkModeEnum.wan_new,   // 外网模式
-    PanelStateNetworkModeEnum.lan_new,   // 内网模式
+    PanelStateNetworkModeEnum.auto,   // 自动内外网
+    PanelStateNetworkModeEnum.wan,   // 外网模式
+    PanelStateNetworkModeEnum.lan,   // 内网模式
   ]
   
   const currentIndex = modes.indexOf(panelState.networkMode)
@@ -1127,10 +1127,10 @@ function handleCycleNetworkMode() {
 // 获取网络模式按钮文本
 function getNetworkModeButtonText() {
   const modeTexts: Record<number, string> = {
-    [PanelStateNetworkModeEnum.wan_old]: '自动内外网',
-    [PanelStateNetworkModeEnum.wan_new]: '外网模式',
-    [PanelStateNetworkModeEnum.lan_new]: '内网模式',
-    [PanelStateNetworkModeEnum.lan_old]: '编辑模式',
+    [PanelStateNetworkModeEnum.auto]: '自动内外网',
+    [PanelStateNetworkModeEnum.wan]: '外网模式',
+    [PanelStateNetworkModeEnum.lan]: '内网模式',
+    [PanelStateNetworkModeEnum.edit]: '编辑模式',
   }
   const currentMode = modeTexts[panelState.networkMode] || '未知模式'
   return `当前：${currentMode}`
@@ -1139,11 +1139,11 @@ function getNetworkModeButtonText() {
 // 获取网络模式按钮图标
 function getNetworkModeButtonIcon() {
   const modeIcons: Record<number, string> = {
-    [PanelStateNetworkModeEnum.wan_old]: 'mdi:wan',
-    [PanelStateNetworkModeEnum.wan_new]: 'mdi:wan',
-    [PanelStateNetworkModeEnum.lan_new]: 'material-symbols:lan-outline-rounded',
-    // 编辑模式下不显示锁图标，保持显示上一个公开模式的图标
-    [PanelStateNetworkModeEnum.lan_old]: 'mdi:wan',
+    [PanelStateNetworkModeEnum.auto]: 'carbon--network-3',
+    [PanelStateNetworkModeEnum.wan]: 'mdi:wan',
+    [PanelStateNetworkModeEnum.lan]: 'material-symbols:lan-outline-rounded',
+    // 编辑模式下不切换图标，保持显示上一个公开模式的图标
+    [PanelStateNetworkModeEnum.edit]: 'mdi:wan',
   }
   return modeIcons[panelState.networkMode] || 'mdi:wan'
 }
@@ -1218,7 +1218,7 @@ function getNetworkModeButtonIcon() {
                 {{ itemGroup.title }}
               </span>
               <div
-                v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN && panelState.networkMode === PanelStateNetworkModeEnum.lan_old"
+                v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN && panelState.networkMode === PanelStateNetworkModeEnum.edit"
                 class="group-buttons ml-2 delay-100 transition-opacity flex"
               >
                 <span class="mr-2 cursor-pointer" :title="t('common.add')" @click="handleAddItem(itemGroup.id)">
@@ -1349,10 +1349,10 @@ function getNetworkModeButtonIcon() {
           v-if="panelState.panelConfig.secretModeButtonShow && authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" 
           color="#2a2a2a6b"
           title="编辑模式"
-          @click="handleChangeNetwork(PanelStateNetworkModeEnum.lan_old)"
+          @click="handleChangeNetwork(PanelStateNetworkModeEnum.edit)"
         >
           <template #icon>
-            <SvgIcon class="text-white font-xl" icon="typcn:plus" />
+            <SvgIcon class="text-white font-xl" icon="boxicons--edit" />
           </template>
         </NButton>
 

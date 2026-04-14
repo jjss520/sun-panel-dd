@@ -40,7 +40,7 @@ export function defaultState(): Panel.State {
   return {
     rightSiderCollapsed: false,
     leftSiderCollapsed: false,
-    networkMode: PanelStateNetworkModeEnum.wan_old,  // 默认是原 WAN 模式
+    networkMode: PanelStateNetworkModeEnum.auto,  // 默认是自动内外网模式
     panelConfig: { ...defaultStatePanelConfig() },
   }
 }

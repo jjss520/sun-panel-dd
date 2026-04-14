@@ -1,12 +1,12 @@
 export enum PanelStateNetworkModeEnum {
-  // 原 WAN 模式（默认，公开内容）
-  'wan_old' = 0,
-  // 新 WAN 模式（待修改）
-  'wan_new' = 1,
-  // 新 LAN 模式（待修改）
-  'lan_new' = 2,
-  // 原 LAN/私密模式（需要密码，全部内容）
-  'lan_old' = 3,
+  // 自动内外网模式
+  'auto' = 0,
+  // 外网模式
+  'wan' = 1,
+  // 内网模式
+  'lan' = 2,
+  // 编辑模式（需要密码，全部内容）
+  'edit' = 3,
 }
 
 export enum PanelPanelConfigStyleEnum {
