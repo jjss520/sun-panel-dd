@@ -45,7 +45,11 @@ const dropdownShow = ref(false)
 const currentRightSelectItem = ref<Panel.ItemInfo | null>(null)
 const currentAddItenIconGroupId = ref<number | undefined>()
 const isMobile = ref(false)
-// 刷新函数 - 删除缓存并重新加载数据
+const showIcons = ref(true) // 控制图标显示/隐藏
+// 切换图标显示/隐藏
+function handleToggleIcons() {
+  showIcons.value = !showIcons.value
+}
 async function handleRefreshData() {
   try {
     // 删除除用户登录信息外的所有缓存
@@ -1172,7 +1176,7 @@ function getNetworkModeButtonIcon() {
         <!-- 头 -->
         <div class="mx-[auto] w-[80%]">
           <div class="flex mx-[auto] items-center justify-center text-white">
-            <div class="logo">
+            <div class="logo cursor-pointer" @click="handleToggleIcons" title="点击显示/隐藏图标">
               <span class="text-2xl md:text-6xl font-bold text-shadow">
                 {{ panelState.panelConfig.logoText }}
               </span>
@@ -1190,7 +1194,7 @@ function getNetworkModeButtonIcon() {
         </div>
 
         <!-- 应用盒子 -->
-        <div :style="{ marginLeft: `${panelState.panelConfig.marginX}px`, marginRight: `${panelState.panelConfig.marginX}px` }">
+        <div v-if="showIcons" :style="{ marginLeft: `${panelState.panelConfig.marginX}px`, marginRight: `${panelState.panelConfig.marginX}px` }">
           <!-- 系统监控状态 -->
           <div
             v-if="panelState.panelConfig.systemMonitorShow
