@@ -2,7 +2,7 @@ version: "3.2"
 
 services:
   sun-panel:
-    image: 'ghcr.io/jjss520/sun-panel-dd:master'
+    image: 'ghcr.io/jjss520/sun-panel-dd:latest'
     container_name: sun-panel-dd
     volumes:
     - ./conf:/app/conf
