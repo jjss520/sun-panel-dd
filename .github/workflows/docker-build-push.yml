@@ -72,5 +72,5 @@ jobs:
           build-args: |
             NODE_VERSION=22.10.0
           tags: |
-            ghcr.io/${{ steps.lowercase.outputs.owner }}/sun-panel-v2:${{ env.APP_VERSION }}
-            ghcr.io/${{ steps.lowercase.outputs.owner }}/sun-panel-v2:latest
+            ghcr.io/${{ steps.lowercase.outputs.owner }}/sun-panel-dd:${{ env.APP_VERSION }}
+            ghcr.io/${{ steps.lowercase.outputs.owner }}/sun-panel-dd:latest
