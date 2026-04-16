@@ -70,7 +70,8 @@ declare namespace Panel {
         netModeChangeButtonShow?:boolean
         secretModeButtonShow?:boolean
         autoNetworkWallpaper?:boolean // 是否启用自动获取网络壁纸
-  autoNetworkWallpaperApi?:string // 自动获取网络壁纸API地址
+        autoNetworkWallpaperApi?:string // 自动获取网络壁纸API地址
+        useBingWallpaper?:boolean // 是否使用 BING 每日壁纸
     }
 
     interface userConfig{

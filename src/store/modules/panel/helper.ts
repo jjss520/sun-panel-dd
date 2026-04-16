@@ -32,6 +32,7 @@ export function defaultStatePanelConfig(): Panel.panelConfig {
     secretModeButtonShow: false, // 默认隐藏秘密模式按钮
     autoNetworkWallpaper: false, // 默认关闭自动获取网络壁纸
     autoNetworkWallpaperApi: 'https://img.xjh.me/random_img.php?return=302&type=bg&ctype=nature', // 默认自动获取网络壁纸API地址
+    useBingWallpaper: false, // 默认关闭 BING 壁纸
 
   }
 }

@@ -7,6 +7,7 @@ import { set as setUserConfig } from '@/api/panel/userConfig'
 import { PanelPanelConfigStyleEnum } from '@/enums/panel'
 import { t } from '@/locales'
 import { ss } from '@/utils/storage'
+import defaultBackground from '@/assets/defaultBackground.webp'
 
 // 用户配置缓存键
 const USER_CONFIG_CACHE_KEY = 'USER_CONFIG_CACHE'
@@ -88,11 +89,21 @@ function uploadCloud() {
   })
 }
 
-// 自动获取网络壁纸开关变化处理
-function handleAutoNetworkWallpaperChange() {
-  if (panelState.panelConfig.autoNetworkWallpaper) {
-    // 当开关打开时，立即获取一张随机壁纸
-    fetchRandomWallpaper()
+// BING 壁纸开关变化处理
+function handleBingWallpaperChange(value: boolean) {
+  if (value) {
+    // 关闭"自动获取网络壁纸"开关（互斥）
+    panelState.panelConfig.autoNetworkWallpaper = false
+    
+    // 设置固定路径
+    const bingPath = '/uploads/wallpapers/bing/bing_wallpaper.jpg'
+    panelState.panelConfig.backgroundImageSrc = bingPath
+    
+    // 提示用户
+    ms.success('已设置为 BING 每日壁纸')
+  } else {
+    // 关闭时恢复默认背景
+    panelState.panelConfig.backgroundImageSrc = defaultBackground
   }
 }
 
@@ -103,6 +114,25 @@ function fetchRandomWallpaper() {
   panelState.panelConfig.backgroundImageSrc = apiUrl
   // 保存配置
   uploadCloud()
+}
+
+// 自动获取网络壁纸开关变化处理
+function handleAutoNetworkWallpaperChange() {
+  if (panelState.panelConfig.autoNetworkWallpaper) {
+    // 当开关打开时，关闭 BING 壁纸
+    panelState.panelConfig.useBingWallpaper = false
+    
+    // 如果 API 地址为空，使用默认值
+    if (!panelState.panelConfig.autoNetworkWallpaperApi) {
+      panelState.panelConfig.autoNetworkWallpaperApi = 'https://img.xjh.me/random_img.php?return=302&type=bg&ctype=nature'
+    }
+    
+    // 立即获取一张随机壁纸
+    fetchRandomWallpaper()
+  } else {
+    // 关闭随机壁纸时，恢复默认背景
+    panelState.panelConfig.backgroundImageSrc = defaultBackground
+  }
 }
 
 function resetPanelConfig() {
@@ -264,6 +294,14 @@ function resetPanelConfig() {
       <div class="flex items-center mt-[10px]">
         <span class="mr-[10px]">{{ $t('apps.baseSettings.mask') }}</span>
         <NSlider v-model:value="panelState.panelConfig.backgroundMaskNumber" class="max-w-[200px]" :step="0.1" :max="1" />
+      </div>
+
+      <div class="flex items-center mt-[10px]">
+        <span class="mr-[10px]">BING 每日壁纸</span>
+        <NSwitch v-model:value="panelState.panelConfig.useBingWallpaper" @update:value="handleBingWallpaperChange" />
+      </div>
+      <div v-if="panelState.panelConfig.useBingWallpaper" class="mt-1 text-sm text-slate-500">
+        💡 服务器每天 0:05 自动下载最新 BING 壁纸
       </div>
 
       <div class="flex items-center mt-[10px]">

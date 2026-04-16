@@ -14,6 +14,7 @@ import (
 	"sun-panel/initialize/runlog"
 	"sun-panel/initialize/systemSettingCache"
 	"sun-panel/initialize/userToken"
+	"sun-panel/lib/bingwallpaper"
 	"sun-panel/lib/cmn"
 	"sun-panel/models"
 	"sun-panel/structs"
@@ -100,6 +101,8 @@ func InitApp() error {
 		go UpdateBookmarkParentId()
 		// 异步更新bookmark表中icon_json为空的数据，使用谷歌API获取图标
 		go UpdateBookmarkIconJson()
+		// 启动 BING 壁纸每日下载任务
+		bingwallpaper.StartDailyTask()
 	}()
 
 	return nil
