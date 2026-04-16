@@ -46,9 +46,85 @@ const currentRightSelectItem = ref<Panel.ItemInfo | null>(null)
 const currentAddItenIconGroupId = ref<number | undefined>()
 const isMobile = ref(false)
 const showIcons = ref(true) // 控制图标显示/隐藏
+const showGroupNav = ref(false) // 控制分组导航显示/隐藏（默认隐藏）
+const currentGroupIndex = ref(0) // 当前滚动到的分组索引
+const groupNavTimer = ref<number | null>(null) // 自动隐藏定时器
 // 切换图标显示/隐藏
 function handleToggleIcons() {
   showIcons.value = !showIcons.value
+}
+
+// 显示分组导航
+function showGroupNavMenu() {
+  showGroupNav.value = true
+  // 清除之前的隐藏定时器
+  if (groupNavTimer.value) {
+    clearTimeout(groupNavTimer.value)
+    groupNavTimer.value = null
+  }
+}
+
+// 隐藏分组导航（延迟）
+function hideGroupNavMenu() {
+  if (groupNavTimer.value) {
+    clearTimeout(groupNavTimer.value)
+  }
+  groupNavTimer.value = window.setTimeout(() => {
+    showGroupNav.value = false
+  }, 1500) // 1.5秒后自动隐藏
+}
+
+// 滚动到指定分组
+function scrollToGroup(index: number) {
+  const groupElements = document.querySelectorAll('.item-list')
+  if (groupElements[index]) {
+    groupElements[index].scrollIntoView({ behavior: 'smooth', block: 'start' })
+    currentGroupIndex.value = index
+  }
+}
+
+// 监听滚动，更新当前分组索引
+function handleScroll() {
+  if (!scrollContainerRef.value) return
+  
+  const container = scrollContainerRef.value
+  const scrollTop = container.scrollTop
+  const containerHeight = container.clientHeight
+  const scrollPosition = scrollTop + containerHeight / 3
+  
+  const groupElements = container.querySelectorAll('.item-list')
+  
+  groupElements.forEach((element, index) => {
+    const elementTop = (element as HTMLElement).offsetTop
+    const elementBottom = elementTop + (element as HTMLElement).offsetHeight
+    
+    if (scrollPosition >= elementTop && scrollPosition < elementBottom) {
+      currentGroupIndex.value = index
+    }
+  })
+}
+
+// 组件挂载时添加滚动监听和鼠标监听
+onMounted(() => {
+  // 监听滚动容器的滚动事件
+  if (scrollContainerRef.value) {
+    scrollContainerRef.value.addEventListener('scroll', handleScroll)
+  }
+  
+  // 使用事件委托监听鼠标移动
+  document.addEventListener('mousemove', handleMouseMove)
+})
+
+// 鼠标移动事件处理
+function handleMouseMove(e: MouseEvent) {
+  // 鼠标在左侧 60px 区域内
+  if (e.clientX <= 60) {
+    showGroupNavMenu()
+  } 
+  // 鼠标离开导航条区域（超过 120px）
+  else if (e.clientX > 120 && showGroupNav.value) {
+    hideGroupNavMenu()
+  }
 }
 async function handleRefreshData() {
   try {
@@ -1327,6 +1403,26 @@ function getNetworkModeButtonIcon() {
       </div>
     </div>
 
+    <!-- 左侧分组导航条 -->
+    <Transition name="fade">
+      <div 
+        v-if="showGroupNav && filterItems.length > 0" 
+        class="group-nav-sidebar"
+      >
+        <div class="group-nav-line">
+          <div
+            v-for="(group, index) in filterItems"
+            :key="index"
+            class="group-nav-dot"
+            :class="{ 'group-nav-dot-active': currentGroupIndex === index }"
+            @click="scrollToGroup(index)"
+          >
+            <span class="group-nav-tooltip">{{ group.title }}</span>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <!-- 右键菜单 -->
     <NDropdown
       placement="bottom-start" trigger="manual" :x="dropdownMenuX" :y="dropdownMenuY"
@@ -1586,5 +1682,109 @@ html {
     touch-action: manipulation;
   }
 }
-</style>
+
+/* 左侧分组导航条样式 */
+.group-nav-sidebar {
+  position: fixed;
+  left: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1000;
+}
+
+.group-nav-line {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 16px 0;
+}
+
+/* 竖线 */
+.group-nav-line::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateX(-50%);
+  border-radius: 1px;
+}
+
+.group-nav-dot {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin: 0 auto;
+  z-index: 1;
+}
+
+.group-nav-dot:hover {
+  background: rgba(255, 255, 255, 0.6);
+  transform: scale(1.15);
+}
+
+.group-nav-dot-active {
+  background: #fff;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.8), 0 0 20px rgba(255, 255, 255, 0.4);
+  transform: scale(1.3);
+}
+
+/* 悬停提示 */
+.group-nav-tooltip {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  color: rgba(255, 255, 255, 0.95);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s ease;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  letter-spacing: 0.3px;
+}
+
+.group-nav-dot:hover .group-nav-tooltip {
+  opacity: 1;
+  visibility: visible;
+  left: 24px;
+}
+
+/* 淡入淡出动画 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* 移动端隐藏导航条 */
+@media (max-width: 768px) {
+  .group-nav-sidebar {
+    display: none;
+  }
+}
+
+/* 隐藏左侧悬停检测区域 */
+.left-hover-area {
+  pointer-events: none !important;
+}</style>
 

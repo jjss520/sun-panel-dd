@@ -1,5 +1,5 @@
 # build frontend
-FROM docker.m.daocloud.io/node:18-alpine AS web_image
+FROM node:18-alpine AS web_image
 
 # 使用淘宝npm镜像源加速依赖安装
 RUN npm config set registry https://registry.npmmirror.com
@@ -25,7 +25,7 @@ RUN pnpm run build
 
 # build backend
 # sun-panel暂时解决方案使用golang:1.21-alpine3.18（因旧版本使用没问题，短期内较稳定）
-FROM docker.m.daocloud.io/golang:1.21-alpine3.18 AS server_image
+FROM golang:1.21-alpine3.18 AS server_image
 
 WORKDIR /build
 
@@ -46,7 +46,7 @@ RUN rm -f bindata.go assets/bindata.go \
 
 
 # run_image
-FROM docker.m.daocloud.io/alpine
+FROM alpine
 
 WORKDIR /app
 
