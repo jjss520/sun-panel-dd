@@ -60,7 +60,6 @@ COPY --from=server_image /build/sun-panel /app/sun-panel
 EXPOSE 3002
 
 RUN apk add --no-cache bash ca-certificates su-exec tzdata \
-    && chmod +x ./sun-panel \
-    && ./sun-panel -config
+    && chmod +x ./sun-panel
 
 CMD ["./sun-panel"]
