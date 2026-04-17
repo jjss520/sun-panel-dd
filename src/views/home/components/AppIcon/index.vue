@@ -44,7 +44,7 @@ const itemIconSize = computed(() => {
     <!-- 详情图标 -->
     <div
       v-if="style === PanelPanelConfigStyleEnum.info"
-      class="app-icon-info w-full rounded-2xl  transition-all duration-200 hover:shadow-[0_0_20px_10px_rgba(0,0,0,0.2)] flex"
+      class="app-icon-info w-full rounded-2xl transition-all duration-200 hover:shadow-[0_8px_30px_rgba(255,255,255,0.3)] hover:scale-110 hover:-translate-y-1 flex"
       :style="{ background: itemInfo?.icon?.backgroundColor || defaultBackground }"
       @contextmenu.prevent
       @touchstart.passive
@@ -78,7 +78,7 @@ const itemIconSize = computed(() => {
       <!-- 图标层 -->
       <div class="app-icon-small-icon-wrapper">
         <div
-          class="app-icon-small-icon rounded-2xl sunpanel mx-auto rounded-2xl transition-all duration-200 hover:shadow-[0_0_20px_10px_rgba(0,0,0,0.2)]"
+          class="app-icon-small-icon rounded-2xl sunpanel mx-auto rounded-2xl transition-all duration-200 hover:shadow-[0_8px_30px_rgba(255,255,255,0.3)] hover:scale-110 hover:-translate-y-1"
           :title="itemInfo?.description"
         >
           <ItemIcon :item-icon="itemInfo?.icon" force-background="transparent" :size="itemIconSize" style="border-radius: 1rem;" />

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NButton, NCard, NForm, NFormItem, NGradientText, NInput, NSelect, useMessage } from 'naive-ui'
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { login } from '@/api'
 import { useAppStore, useAuthStore } from '@/store'
 import { SvgIcon } from '@/components/common'
@@ -17,6 +17,7 @@ const ms = useMessage()
 const loading = ref(false)
 const languageValue = ref<Language>(appStore.language)
 const GROUP_LIST_CACHE_KEY = 'groupListCache'
+const usernameInputRef = ref()
 // const isShowCaptcha = ref<boolean>(false)
 // const isShowRegister = ref<boolean>(false)
 
@@ -85,6 +86,13 @@ function handleChangeLanuage(value: Language) {
   languageValue.value = value
   appStore.setLanguage(value)
 }
+
+// 组件挂载后自动聚焦到用户名输入框
+onMounted(() => {
+  setTimeout(() => {
+    usernameInputRef.value?.focus()
+  }, 100)
+})
 </script>
 
 <template>
@@ -106,7 +114,7 @@ function handleChangeLanuage(value: Language) {
       </div>
       <NForm :model="form" label-width="100px" @keydown.enter="handleSubmit">
         <NFormItem>
-          <NInput v-model:value="form.username" :placeholder="$t('login.usernamePlaceholder')">
+          <NInput ref="usernameInputRef" v-model:value="form.username" :placeholder="$t('login.usernamePlaceholder')">
             <template #prefix>
               <SvgIcon icon="ph:user-bold" />
             </template>
