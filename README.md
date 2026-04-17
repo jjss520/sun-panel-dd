@@ -1,7 +1,7 @@
 
 <div align=center>
 
-<img src="./main/public/favicon.svg" width="100" height="100" />
+<img src="./public/favicon.svg" width="100" height="100" />
 
 # Sun-Panel-DD
 
