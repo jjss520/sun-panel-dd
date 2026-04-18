@@ -96,19 +96,22 @@ func StartDailyTask() {
 		fmt.Println("首次下载 BING 壁纸成功")
 	}
 
-	// 设置定时器，每天凌晨 0:05 执行
+	// 设置定时器，每天凌晨 0:05 执行（北京时间）
 	go func() {
+		// 使用北京时区 (UTC+8)
+		beijingZone := time.FixedZone("CST", 8*3600)
+		
 		for {
-			now := time.Now()
-			// 计算下一个凌晨 0:05 的时间
-			next := time.Date(now.Year(), now.Month(), now.Day(), 0, 5, 0, 0, now.Location())
+			now := time.Now().In(beijingZone)
+			// 计算下一个凌晨 0:05 的时间（北京时间）
+			next := time.Date(now.Year(), now.Month(), now.Day(), 0, 5, 0, 0, beijingZone)
 			if now.After(next) {
 				// 如果已经过了今天的 0:05，则设置为明天的 0:05
 				next = next.Add(24 * time.Hour)
 			}
 			
 			duration := next.Sub(now)
-			fmt.Printf("下次 BING 壁纸下载时间: %s (等待 %v)\n", next.Format("2006-01-02 15:04:05"), duration)
+			fmt.Printf("下次 BING 壁纸下载时间（北京时间）: %s (等待 %v)\n", next.Format("2006-01-02 15:04:05"), duration)
 			
 			time.Sleep(duration)
 			
@@ -121,5 +124,5 @@ func StartDailyTask() {
 		}
 	}()
 
-	fmt.Println("BING 壁纸每日下载任务已启动（每天 00:05 执行）")
+	fmt.Println("BING 壁纸每日下载任务已启动（每天北京时间 00:05 执行）")
 }

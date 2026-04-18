@@ -44,7 +44,7 @@ const itemIconSize = computed(() => {
     <!-- 详情图标 -->
     <div
       v-if="style === PanelPanelConfigStyleEnum.info"
-      class="app-icon-info w-full rounded-2xl transition-all duration-200 hover:shadow-[0_8px_30px_rgba(255,255,255,0.3)] hover:scale-110 hover:-translate-y-1 flex"
+      class="app-icon-info w-full rounded-2xl transition-all duration-200 pc-hover-effect flex"
       :style="{ background: itemInfo?.icon?.backgroundColor || defaultBackground }"
       @contextmenu.prevent
       @touchstart.passive
@@ -78,7 +78,7 @@ const itemIconSize = computed(() => {
       <!-- 图标层 -->
       <div class="app-icon-small-icon-wrapper">
         <div
-          class="app-icon-small-icon rounded-2xl sunpanel mx-auto rounded-2xl transition-all duration-200 hover:shadow-[0_8px_30px_rgba(255,255,255,0.3)] hover:scale-110 hover:-translate-y-1"
+          class="app-icon-small-icon rounded-2xl sunpanel mx-auto rounded-2xl transition-all duration-200 pc-hover-effect"
           :title="itemInfo?.description"
         >
           <ItemIcon :item-icon="itemInfo?.icon" force-background="transparent" :size="itemIconSize" style="border-radius: 1rem;" />
@@ -106,6 +106,14 @@ const itemIconSize = computed(() => {
 </template>
 
 <style scoped>
+/* PC 端 hover 效果 - 仅在支持 hover 的设备上生效 */
+@media (hover: hover) and (pointer: fine) {
+  .pc-hover-effect:hover {
+    box-shadow: 0 8px 30px rgba(255, 255, 255, 0.3);
+    transform: scale(1.1) translateY(-4px);
+  }
+}
+
 /* 响应式图标块设计 */
 .app-icon-info-icon {
   width: min(70px, 100%);
