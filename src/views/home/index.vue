@@ -2,7 +2,7 @@
 import { VueDraggable } from 'vue-draggable-plus'
 import { NBackTop, NButton, NButtonGroup, NDropdown, NModal, NSkeleton, NSpin, useDialog, useMessage } from 'naive-ui'
 import { nextTick, onMounted, onActivated, ref, h } from 'vue'
-import { AppIcon, AppStarter, EditItem } from './components'
+import { AppIcon, AppStarter, EditItem, NotePad } from './components'
 import { Clock, SystemMonitor } from '@/components/deskModule'
 import SearchBoxWithSuggestions from '@/components/deskModule/SearchBoxWithSuggestions/index.vue'
 import { SvgIcon } from '@/components/common'
@@ -44,6 +44,8 @@ const dropdownMenuY = ref(0)
 const dropdownShow = ref(false)
 const currentRightSelectItem = ref<Panel.ItemInfo | null>(null)
 const currentAddItenIconGroupId = ref<number | undefined>()
+const notepadVisible = ref(false)
+const notepadInstance = ref(null) // 便签实例
 const isMobile = ref(false)
 const showIcons = ref(true) // 控制图标显示/隐藏
 const showGroupNav = ref(false) // 控制分组导航显示/隐藏（默认隐藏）
@@ -143,6 +145,12 @@ async function handleRefreshData() {
 
     // 重新加载数据
     getList()
+
+    // 刷新便签数据（仅登录状态下）
+    if (authStore.visitMode === VisitMode.VISIT_MODE_LOGIN && notepadInstance.value) {
+        // @ts-ignore
+        notepadInstance.value.refreshData?.()
+    }
 
     // 检查是否需要重新获取网络壁纸
     if (panelState.panelConfig.autoNetworkWallpaper) {
@@ -1251,6 +1259,15 @@ function getNetworkModeButtonIcon() {
       >
         <!-- 头 -->
         <div class="mx-[auto] w-[80%]">
+          <!-- 右上角便签按钮 -->
+          <div v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" 
+               class="fixed top-4 right-4 z-50 cursor-pointer shadow-[0_0_10px_2px_rgba(0,0,0,0.2)]" 
+               style="background-color: #2a2a2a6b; border-radius: 4px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;"
+               title="便签"
+               @click="notepadVisible = true">
+            <SvgIcon class="text-white" style="width: 25px; height: 25px;" icon="glyphs--note" />
+          </div>
+        
           <div class="flex mx-[auto] items-center justify-center text-white">
             <div class="logo cursor-pointer" @click="handleToggleIcons" title="点击显示/隐藏图标">
               <span class="text-2xl md:text-6xl font-bold text-shadow">
@@ -1476,6 +1493,7 @@ function getNetworkModeButtonIcon() {
       </NButtonGroup>
 
       <AppStarter v-model:visible="settingModalShow" />
+      <NotePad ref="notepadInstance" v-model:visible="notepadVisible" />
       <!-- <Setting v-model:visible="settingModalShow" /> -->
     </div>
 
