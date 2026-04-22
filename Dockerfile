@@ -31,6 +31,9 @@ WORKDIR /build
 
 COPY ./service .
 
+# 使用阿里云镜像源加速apk安装
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+
 RUN apk add --no-cache bash curl gcc git musl-dev
 
 # 中国国内源 (根据需要启用)

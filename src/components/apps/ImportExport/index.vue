@@ -9,6 +9,7 @@ import { get as getAbout } from '@/api/system/about'
 import { edit as addGroup, getList as getGroupList } from '@/api/panel/itemIconGroup'
 import { ss } from '@/utils/storage/local'
 import { addMultiple as addMultipleIcons, getListByGroupId } from '@/api/panel/itemIcon'
+import { getNotepadList, saveNotepadContent, deleteNotepad, type NotepadInfo } from '@/api/panel/notepad'
 
 import { t } from '@/locales'
 
@@ -29,8 +30,8 @@ const debug = ref(false)
 
 const importObj = ref<ImportJsonResult | null> (null)
 
-const importItems = ref<string[]>(['icons']) // 当前软件版本支持导入导出的项目
-const checkedItems = ref<string[]>(['icons']) // 当前准备导入的项目
+const importItems = ref<string[]>(['icons', 'notepads']) // 当前软件版本支持导入导出的项目
+const checkedItems = ref<string[]>(['icons', 'notepads']) // 当前准备导入的项目
 
 // 导入图标
 async function importIcons(): Promise<string | null> {
@@ -144,6 +145,83 @@ async function exportIcons(): Promise<IconGroup[]> {
   }
 }
 
+// 导入记事本（包含提醒）- 覆盖模式
+async function importNotepads(): Promise<string | null> {
+  const notepads = importObj.value?.getNotepads()
+
+  if (!notepads || notepads.length === 0)
+    return null
+
+  try {
+    // 第一步：获取当前所有记事本并删除（覆盖模式）
+    const currentResponse = await getNotepadList()
+    if (currentResponse.code === 0 && currentResponse.data && currentResponse.data.length > 0) {
+      console.log(`发现 ${currentResponse.data.length} 个现有记事本，开始删除...`)
+      for (const existingNotepad of currentResponse.data) {
+        const deleteResponse = await deleteNotepad({ id: existingNotepad.id })
+        if (deleteResponse.code !== 0) {
+          console.warn(`删除记事本 ${existingNotepad.id} 失败:`, deleteResponse.msg)
+        }
+      }
+      console.log('现有记事本已清除')
+    }
+
+    // 第二步：导入新的记事本
+    console.log(`开始导入 ${notepads.length} 个记事本...`)
+    for (const notepad of notepads) {
+      // 保存记事本（不包含 id，让后端自动生成）
+      const response = await saveNotepadContent({
+        id: 0, // 0 表示新建
+        title: notepad.title,
+        content: notepad.content,
+        remindTime: notepad.remindTime || null,
+        remindStatus: notepad.remindStatus || 0,
+        remindRepeat: notepad.remindRepeat || 'none',
+        remindForce: notepad.remindForce || 0,
+        remindAdvanceDays: notepad.remindAdvanceDays || 0,
+      })
+
+      if (response.code !== 0)
+        return `${t('common.failed')}: ${response.msg}`
+    }
+
+    console.log('记事本导入成功')
+    return null
+  }
+  catch (error) {
+    if (error instanceof Error)
+      return `${t('common.failed')}: ${error.message}`
+    else
+      return t('common.unknownError')
+  }
+}
+
+// 导出记事本（包含提醒）
+async function exportNotepads(): Promise<import('@/utils/jsonImportExport').NotepadItem[]> {
+  try {
+    const response = await getNotepadList()
+    
+    if (response.code === 0 && response.data) {
+      // 转换数据格式，移除 id 和 userId 等不需要的字段
+      return response.data.map((item: NotepadInfo) => ({
+        title: item.title,
+        content: item.content,
+        remindTime: item.remindTime || null,
+        remindStatus: item.remindStatus || 0,
+        remindRepeat: item.remindRepeat || 'none',
+        remindForce: item.remindForce || 0,
+        remindAdvanceDays: item.remindAdvanceDays || 0,
+      }))
+    }
+    
+    return []
+  }
+  catch (error) {
+    console.error('导出记事本失败:', error)
+    return []
+  }
+}
+
 onMounted(() => {
   interface Version {
     versionName: string
@@ -223,6 +301,10 @@ async function handleStartExport() {
     exportResult.addIconsData(iconGroups)
   }
 
+  if (checkedItems.value.includes('notepads')) {
+    const notepads = await exportNotepads()
+    exportResult.addNotepadsData(notepads)
+  }
 
   jsonData.value = exportResult.string()
   exportResult.exportFile()
@@ -234,21 +316,33 @@ async function handleStartExport() {
 // 开始导入
 async function handleStartImport() {
   loading.value = true
+  
   if (checkedItems.value.includes('icons')) {
     const errMsg = await importIcons()
     if (errMsg !== null) {
       ms.error(`${t('common.failed')}:${errMsg}`) // Use error for failure
-    } else {
-       // 成功
-       ms.success(`${t('common.success')}`)
-       // 延迟刷新
-       setTimeout(() => {
-           window.location.reload()
-       }, 1000)
+      loading.value = false
+      importRoundModalShow.value = false
+      return
     }
-  } else {
-       // No items selected?
   }
+
+  if (checkedItems.value.includes('notepads')) {
+    const errMsg = await importNotepads()
+    if (errMsg !== null) {
+      ms.error(`${t('common.failed')}:${errMsg}`)
+      loading.value = false
+      importRoundModalShow.value = false
+      return
+    }
+  }
+
+  // 全部成功
+  ms.success(`${t('common.success')}`)
+  // 延迟刷新
+  setTimeout(() => {
+    window.location.reload()
+  }, 1000)
 
   loading.value = false
   importRoundModalShow.value = false
@@ -332,6 +426,7 @@ async function handleStartImport() {
       <NSpace justify="center" style="margin-top: 20px;">
         <NCheckboxGroup v-model:value="checkedItems">
           <NCheckbox v-if="importItems.includes('icons')" value="icons" :label="$t('apps.exportImport.moduleIcon')" />
+          <NCheckbox v-if="importItems.includes('notepads')" value="notepads" :label="$t('apps.exportImport.moduleNotepad')" />
           <NCheckbox v-if="importItems.includes('style')" value="style" :label="$t('apps.exportImport.moduleStyle')" />
         </NCheckboxGroup>
       </NSpace>
@@ -352,6 +447,7 @@ async function handleStartImport() {
       <NSpace justify="center" style="margin-top: 20px;">
         <NCheckboxGroup v-model:value="checkedItems">
           <NCheckbox v-if="importItems.includes('icons')" value="icons" :label="$t('apps.exportImport.moduleIcon')" />
+          <NCheckbox v-if="importItems.includes('notepads')" value="notepads" :label="$t('apps.exportImport.moduleNotepad')" />
           <NCheckbox v-if="importItems.includes('style')" value="style" :label="$t('apps.exportImport.moduleStyle')" />
         </NCheckboxGroup>
       </NSpace>

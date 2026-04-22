@@ -25,6 +25,7 @@ export interface JsonStructure {
   exportTime: string
   appVersion: string
   icons?: any
+  notepads?: NotepadItem[]
   // styleConfig: Panel.panelConfig
   md5: string
 }
@@ -48,8 +49,23 @@ export interface IconGroup {
   children: Icon[]
 }
 
+// 记事本项（包含提醒信息）
+export interface NotepadItem {
+  id?: number
+  title: string
+  content: string
+  remindTime?: string | null
+  remindStatus?: number
+  remindRepeat?: string
+  remindForce?: number
+  remindAdvanceDays?: number
+  createdAt?: string
+  updatedAt?: string
+}
+
 interface ExportJsonResult {
   addIconsData(datas: IconGroup[]): ExportJsonResult
+  addNotepadsData(datas: NotepadItem[]): ExportJsonResult
   exportFile(): void
   string(): string
 }
@@ -73,6 +89,12 @@ export function exportJson(appVersion?: string): ExportJsonResult {
     // 添加图标信息
     addIconsData(datas: IconGroup[]) {
       jsonData.icons = datas
+      return this
+    },
+
+    // 添加记事本信息
+    addNotepadsData(datas: NotepadItem[]) {
+      jsonData.notepads = datas
       return this
     },
 
@@ -105,6 +127,7 @@ export interface ImportJsonResult {
   jsonStruct: JsonStructure // 根据实际情况提供更具体的类型定义
   hasProperty: (key: string) => boolean
   geticons: () => IconGroup[] // 根据实际情况提供更具体的类型定义
+  getNotepads: () => NotepadItem[] // 获取记事本数据
 }
 
 // 导入json数据
@@ -140,6 +163,9 @@ export function importJsonString(jsonString: string): ImportJsonResult | null {
     },
     geticons: (): IconGroup[] => {
       return jsonStruct.icons || []
+    },
+    getNotepads: (): NotepadItem[] => {
+      return jsonStruct.notepads || []
     },
   }
 }

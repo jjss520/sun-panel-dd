@@ -59,9 +59,18 @@ export default defineConfig((env) => {
       commonjsOptions: {
         ignoreTryCatch: false,
       },
+      rollupOptions: {
+        output: {
+          // 确保文件名包含哈希，打破浏览器缓存
+          entryFileNames: 'assets/[name].[hash].js',
+          chunkFileNames: 'assets/[name].[hash].js',
+          assetFileNames: 'assets/[name].[hash].[ext]',
+        },
+      },
       terserOptions: {
         compress: {
-          drop_console: true,
+          // 保留 console.log 用于调试
+          drop_console: false,
         },
       },
     },

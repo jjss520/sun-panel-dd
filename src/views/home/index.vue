@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { VueDraggable } from 'vue-draggable-plus'
 import { NBackTop, NButton, NButtonGroup, NDropdown, NModal, NSkeleton, NSpin, useDialog, useMessage } from 'naive-ui'
-import { nextTick, onMounted, onActivated, ref, h } from 'vue'
+import { nextTick, onMounted, onActivated, onUnmounted, ref, h } from 'vue'
 import { AppIcon, AppStarter, EditItem, NotePad } from './components'
 import { Clock, SystemMonitor } from '@/components/deskModule'
 import SearchBoxWithSuggestions from '@/components/deskModule/SearchBoxWithSuggestions/index.vue'
-import { SvgIcon } from '@/components/common'
+import { SvgIcon, SvgIconOnline } from '@/components/common'
 import { deletes, getListByGroupId, saveSort } from '@/api/panel/itemIcon'
 
 import { setTitle, updateLocalUserInfo, openUrlWithoutReferer } from '@/utils/cmn'
@@ -46,11 +46,26 @@ const currentRightSelectItem = ref<Panel.ItemInfo | null>(null)
 const currentAddItenIconGroupId = ref<number | undefined>()
 const notepadVisible = ref(false)
 const notepadInstance = ref(null) // 便签实例
+let remindCheckTimer: number | null = null // 提醒检查定时器
 const isMobile = ref(false)
 const showIcons = ref(true) // 控制图标显示/隐藏
 const showGroupNav = ref(false) // 控制分组导航显示/隐藏（默认隐藏）
 const currentGroupIndex = ref(0) // 当前滚动到的分组索引
 const groupNavTimer = ref<number | null>(null) // 自动隐藏定时器
+
+// 提醒通知列表
+interface RemindNotification {
+  id: number
+  noteId: number
+  title: string
+  time: string
+  visible: boolean
+  autoCloseTimer?: number // 自动关闭定时器
+  remindForce?: number // 强制提醒状态
+  remindRepeat?: string // 重复类型
+}
+const remindNotifications = ref<RemindNotification[]>([])
+let notificationIdCounter = 0
 // 切换图标显示/隐藏
 function handleToggleIcons() {
   showIcons.value = !showIcons.value
@@ -115,6 +130,14 @@ onMounted(() => {
   
   // 使用事件委托监听鼠标移动
   document.addEventListener('mousemove', handleMouseMove)
+  
+  // 启动提醒检查
+  startRemindCheck()
+})
+
+// 组件卸载时清除定时器
+onUnmounted(() => {
+  stopRemindCheck()
 })
 
 // 鼠标移动事件处理
@@ -126,6 +149,378 @@ function handleMouseMove(e: MouseEvent) {
   // 鼠标离开导航条区域（超过 120px）
   else if (e.clientX > 120 && showGroupNav.value) {
     hideGroupNavMenu()
+  }
+}
+
+// ========== 提醒检查功能 ==========
+// 已提醒的便签ID集合（用于防止刷新后重复提醒）
+const remindedNoteIds = ref<Set<number>>(new Set())
+
+// 从 sessionStorage 恢复已提醒记录
+const loadRemindedNotes = () => {
+  try {
+    const saved = sessionStorage.getItem('REMINDED_NOTE_IDS')
+    if (saved) {
+      const ids = JSON.parse(saved)
+      remindedNoteIds.value = new Set(ids)
+      console.log('[提醒检查] 恢复已提醒记录:', ids)
+    }
+  } catch (e) {
+    console.error('[提醒检查] 恢复已提醒记录失败:', e)
+  }
+}
+
+// 保存已提醒记录到 sessionStorage
+const saveRemindedNotes = () => {
+  try {
+    const ids = Array.from(remindedNoteIds.value)
+    sessionStorage.setItem('REMINDED_NOTE_IDS', JSON.stringify(ids))
+  } catch (e) {
+    console.error('[提醒检查] 保存已提醒记录失败:', e)
+  }
+}
+
+// 保存强制提醒的最后提醒时间（用于每小时检测）
+const saveForceRemindLastTime = (noteId: number, timestamp: number) => {
+  try {
+    const key = `FORCE_REMIND_LAST_TIME_${noteId}`
+    sessionStorage.setItem(key, timestamp.toString())
+  } catch (e) {
+    console.error('[强制提醒] 保存最后提醒时间失败:', e)
+  }
+}
+
+// 获取强制提醒的最后提醒时间
+const getForceRemindLastTime = (noteId: number): number | null => {
+  try {
+    const key = `FORCE_REMIND_LAST_TIME_${noteId}`
+    const value = sessionStorage.getItem(key)
+    return value ? parseInt(value) : null
+  } catch (e) {
+    console.error('[强制提醒] 获取最后提醒时间失败:', e)
+    return null
+  }
+}
+
+// 启动提醒检查
+const startRemindCheck = () => {
+  console.log('[提醒检查] 定时器已启动')
+  
+  // 从 sessionStorage 恢复已提醒记录
+  loadRemindedNotes()
+  
+  // 计算到下一个整分钟的毫秒数
+  const now = new Date()
+  const seconds = now.getSeconds()
+  const milliseconds = now.getMilliseconds()
+  const delayToNextMinute = (60 - seconds) * 1000 - milliseconds
+  
+  console.log(`[提醒检查] 将在 ${delayToNextMinute}ms 后进行首次检查（对齐到整分钟）`)
+  
+  // 延迟到下一个整分钟执行首次检查
+  setTimeout(() => {
+    checkReminds()
+    
+    // 之后每分钟检查一次（在整分钟时）
+    remindCheckTimer = window.setInterval(checkReminds, 60000)
+  }, delayToNextMinute)
+}
+
+// 停止提醒检查
+const stopRemindCheck = () => {
+  if (remindCheckTimer) {
+    clearInterval(remindCheckTimer)
+    remindCheckTimer = null
+    console.log('[提醒检查] 定时器已停止')
+  }
+}
+
+// 检查是否有到期的提醒
+const checkReminds = async () => {
+  // 只在登录状态下检查
+  if (authStore.visitMode !== VisitMode.VISIT_MODE_LOGIN) {
+    console.log('[提醒检查] 未登录，跳过检查')
+    return
+  }
+  
+  try {
+    console.log('[提醒检查] 开始检查...')
+    // 直接从 API 获取便签列表进行检查，不依赖组件实例
+    const res = await getNotepadList()
+    if (res.code === 0 && res.data) {
+      const now = new Date()
+      console.log(`[提醒检查] 当前时间: ${now.toLocaleString('zh-CN')}, 共${res.data.length}个便签`)
+      
+      for (const note of res.data) {
+        console.log(`[提醒检查] 便签: ${note.title}, remindTime: ${note.remindTime}, remindStatus: ${note.remindStatus}, remindForce: ${note.remindForce}, remindAdvanceDays: ${note.remindAdvanceDays}`)
+        
+        if (note.remindTime && note.remindStatus === 0) {
+          let baseRemindTime = new Date(note.remindTime)
+          
+          // 对于重复提醒，如果基准时间已过期，需要先递增到下一个周期
+          if (note.remindRepeat && note.remindRepeat !== 'none') {
+            const now = new Date()
+            while (baseRemindTime <= now) {
+              switch (note.remindRepeat) {
+                case 'daily':
+                  baseRemindTime.setDate(baseRemindTime.getDate() + 1)
+                  break
+                case 'weekly':
+                  baseRemindTime.setDate(baseRemindTime.getDate() + 7)
+                  break
+                case 'monthly':
+                  baseRemindTime.setMonth(baseRemindTime.getMonth() + 1)
+                  break
+                case 'yearly':
+                  baseRemindTime.setFullYear(baseRemindTime.getFullYear() + 1)
+                  break
+              }
+            }
+          }
+          
+          // 计算实际提醒时间 = 下一个基准时间 - 提前天数
+          const actualRemindTime = new Date(baseRemindTime)
+          if (note.remindAdvanceDays && note.remindAdvanceDays > 0) {
+            actualRemindTime.setDate(actualRemindTime.getDate() - note.remindAdvanceDays)
+          }
+          
+          const timeDiff = now.getTime() - actualRemindTime.getTime()
+          
+          console.log(`[提醒检查] 基准时间: ${baseRemindTime.toLocaleString('zh-CN')}, 实际时间: ${actualRemindTime.toLocaleString('zh-CN')}, 时间差: ${Math.floor(timeDiff / 1000)}秒`)
+          
+          // 处理强制提醒
+          if (note.remindForce === 1) {
+            // 强制提醒：只要过期了就每小时提醒一次
+            if (timeDiff >= 0) {
+              // 检查是否已经在本会话中提醒过
+              if (remindedNoteIds.value.has(note.id)) {
+                // 检查距离上次提醒是否已过1小时
+                const lastRemindTime = getForceRemindLastTime(note.id)
+                if (lastRemindTime && (now.getTime() - lastRemindTime) < 3600000) {
+                  console.log(`[强制提醒] 跳过，距离上次提醒不足1小时: ${note.title}`)
+                  continue
+                }
+              }
+              
+              console.log(`[强制提醒] 触发提醒: ${note.title}, 已过期${Math.floor(timeDiff / 60000)}分钟`)
+              showRemindNotification(note)
+              remindedNoteIds.value.add(note.id)
+              saveRemindedNotes()
+              saveForceRemindLastTime(note.id, now.getTime())
+              // 强制提醒不更新数据库状态，保持 remindStatus=0 以便下次继续提醒
+            }
+            continue
+          }
+          
+          // 跳过已经在本会话中提醒过的便签（非强制提醒）
+          if (remindedNoteIds.value.has(note.id)) {
+            console.log(`[提醒检查] 跳过已提醒: ${note.title}`)
+            continue
+          }
+          
+          // 处理过期提醒：如果是重复提醒，自动计算下次时间
+          if (timeDiff >= 300000) { // 超过5分钟视为过期
+            if (note.remindRepeat && note.remindRepeat !== 'none') {
+              console.log(`[提醒检查] 检测到过期的重复提醒: ${note.title}, 开始计算下次提醒时间`)
+              await markNoteAsReminded(note) // 计算并更新下次提醒时间
+              continue // 跳过本次，等待下次到期
+            } else {
+              console.log(`[提醒检查] 跳过过期提醒: ${note.title}, 已过期${Math.floor(timeDiff / 60000)}分钟`)
+              continue
+            }
+          }
+          
+          // 只提醒在最近5分钟内到期的（避免重复提醒过期的）
+          // timeDiff >= 0: 已经到期
+          // timeDiff < 300000: 在5分钟内（扩大窗口确保不会错过）
+          if (timeDiff >= 0 && timeDiff < 300000) {
+            console.log(`[提醒检查] 触发提醒: ${note.title}, 时间差: ${Math.floor(timeDiff / 1000)}秒`)
+            showRemindNotification(note)
+            // 标记为已提醒，防止刷新后重复显示
+            remindedNoteIds.value.add(note.id)
+            saveRemindedNotes()
+            // 直接调用 API 更新提醒状态，不依赖组件实例
+            await markNoteAsReminded(note)
+          } else if (timeDiff >= 0) {
+            // 这个分支理论上不会到达，因为上面已经处理了 >= 300000 的情况
+            console.log(`[提醒检查] 跳过过期提醒: ${note.title}, 已过期${Math.floor(timeDiff / 60000)}分钟`)
+          } else {
+            console.log(`[提醒检查] 还未到期: ${note.title}, 还有${Math.floor(-timeDiff / 1000)}秒`)
+          }
+        } else if (!note.remindTime) {
+          console.log(`[提醒检查] 无提醒时间: ${note.title}`)
+        } else if (note.remindStatus !== 0) {
+          console.log(`[提醒检查] 提醒状态不是0: ${note.title}, status: ${note.remindStatus}`)
+        }
+      }
+    } else {
+      console.log('[提醒检查] API返回错误:', res)
+    }
+  } catch (error) {
+    console.error('[提醒检查] 检查失败:', error)
+  }
+}
+
+// 显示提醒通知（卡片式）
+const showRemindNotification = (note: any) => {
+  const id = ++notificationIdCounter
+  
+  // 计算实际提醒时间用于显示
+  let displayTime = note.remindTime
+  if (note.remindAdvanceDays && note.remindAdvanceDays > 0 && note.remindTime) {
+    const baseTime = new Date(note.remindTime)
+    const actualTime = new Date(baseTime)
+    actualTime.setDate(actualTime.getDate() - note.remindAdvanceDays)
+    displayTime = actualTime.toISOString()
+  }
+  
+  const notification: RemindNotification = {
+    id,
+    noteId: note.id,
+    title: note.title || '无标题',
+    time: new Date(displayTime).toLocaleString('zh-CN'),
+    visible: true,
+    remindForce: note.remindForce || 0,
+    remindRepeat: note.remindRepeat || 'none'
+  }
+  
+  remindNotifications.value.push(notification)
+  
+  // 10秒后自动消失
+  const timer = window.setTimeout(() => {
+    closeNotification(id)
+  }, 10000)
+  notification.autoCloseTimer = timer
+  
+  // 浏览器通知
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification('⏰ 提醒', {
+      body: note.title,
+      icon: '/logo.png'
+    })
+  }
+}
+
+// 关闭通知
+const closeNotification = async (id: number) => {
+  const index = remindNotifications.value.findIndex(n => n.id === id)
+  if (index > -1) {
+    const notification = remindNotifications.value[index]
+    
+    // 如果是强制提醒且有重复类型，需要更新下次提醒时间
+    if (notification.remindForce === 1 && notification.remindRepeat && notification.remindRepeat !== 'none') {
+      console.log(`[强制提醒] 用户点击知道了，更新下次提醒时间: ${notification.title}`)
+      // 获取便签完整信息
+      try {
+        const res = await getNotepadList()
+        if (res.code === 0 && res.data) {
+          const note = res.data.find((n: any) => n.id === notification.noteId)
+          if (note) {
+            await markNoteAsReminded(note)
+            // 清除强制提醒的最后提醒时间记录
+            const key = `FORCE_REMIND_LAST_TIME_${note.id}`
+            sessionStorage.removeItem(key)
+            // 清除已提醒记录，允许下次正常提醒
+            remindedNoteIds.value.delete(note.id)
+            saveRemindedNotes()
+          }
+        }
+      } catch (e) {
+        console.error('[强制提醒] 更新下次提醒时间失败:', e)
+      }
+    }
+    
+    // 清除自动关闭定时器
+    if (notification.autoCloseTimer) {
+      clearTimeout(notification.autoCloseTimer!)
+    }
+    notification.visible = false
+    // 动画结束后移除
+    setTimeout(() => {
+      remindNotifications.value = remindNotifications.value.filter(n => n.id !== id)
+    }, 300)
+  }
+}
+
+// 暂停自动关闭
+const pauseAutoClose = (event: MouseEvent) => {
+  const card = (event.currentTarget as HTMLElement)
+  const notificationId = parseInt(card.getAttribute('data-id') || '0')
+  const notification = remindNotifications.value.find(n => n.id === notificationId)
+  if (notification && notification.autoCloseTimer) {
+    clearTimeout(notification.autoCloseTimer)
+    notification.autoCloseTimer = undefined
+  }
+}
+
+// 恢复自动关闭
+const resumeAutoClose = (event: MouseEvent) => {
+  const card = (event.currentTarget as HTMLElement)
+  const notificationId = parseInt(card.getAttribute('data-id') || '0')
+  const notification = remindNotifications.value.find(n => n.id === notificationId)
+  if (notification && !notification.autoCloseTimer) {
+    const timer = window.setTimeout(() => {
+      closeNotification(notificationId)
+    }, 5000) // 鼠标移开后5秒关闭
+    notification.autoCloseTimer = timer
+  }
+}
+
+// 查看便签
+const viewNotepad = (noteId: number, notificationId: number) => {
+  notepadVisible.value = true
+  closeNotification(notificationId)
+  // 等待组件加载后选中该便签
+  setTimeout(() => {
+    if (notepadInstance.value) {
+      // @ts-ignore
+      notepadInstance.value.selectNote?.({ id: noteId })
+    }
+  }, 100)
+}
+
+// 清除指定便签的提醒记录（当用户手动编辑或删除提醒时调用）
+const clearRemindedRecord = (noteId: number) => {
+  if (remindedNoteIds.value.has(noteId)) {
+    remindedNoteIds.value.delete(noteId)
+    saveRemindedNotes()
+    console.log('[提醒检查] 清除提醒记录:', noteId)
+  }
+}
+
+// 处理便签组件的提醒状态变化事件
+const handleRemindStatusChanged = (noteId: number) => {
+  console.log('[提醒检查] 收到提醒状态变化事件:', noteId)
+  clearRemindedRecord(noteId)
+}
+
+// 标记为已提醒（直接调用API，不依赖组件实例）
+const markNoteAsReminded = async (note: any) => {
+  try {
+    // 对于重复提醒，不更新 remindTime，保持原始基准时间
+    // 只重置 remindStatus 为 0（未提醒），下次检查时会自动计算下一个周期
+    let remindTime = note.remindTime  // 保持原值不变
+    let remindStatus = 1  // 默认标记为已提醒
+    
+    // 如果是重复提醒，保持 remindStatus=0 以便下次继续检查
+    if (note.remindRepeat && note.remindRepeat !== 'none') {
+      remindStatus = 0
+      console.log(`[提醒检查] 重复提醒，保持 remindStatus=0，基准时间不变: ${remindTime}`)
+    }
+    
+    // 直接调用 API 更新
+    await saveNotepadContent({
+      id: note.id,
+      title: note.title,
+      content: note.content,
+      remindTime: remindTime,  // 保持原始基准时间
+      remindStatus: remindStatus,
+      remindRepeat: note.remindRepeat || 'none',
+      remindForce: note.remindForce || 0,
+      remindAdvanceDays: note.remindAdvanceDays || 0  // 保留提前天数
+    })
+  } catch (e) {
+    console.error('Mark reminded error', e)
   }
 }
 async function handleRefreshData() {
@@ -197,6 +592,7 @@ useWindowSize()
 
 // 从API导入获取书签列表的函数
 import { getList as getBookmarksList } from '@/api/panel/bookmark'
+import { getNotepadList, saveNotepadContent } from '@/api/panel/notepad'
 import { getList as getGroupList } from '@/api/panel/itemIconGroup'
 import { ss } from '@/utils/storage/local'
 import { getSystemSettings } from '@/api/system/systemSetting'
@@ -1493,7 +1889,11 @@ function getNetworkModeButtonIcon() {
       </NButtonGroup>
 
       <AppStarter v-model:visible="settingModalShow" />
-      <NotePad ref="notepadInstance" v-model:visible="notepadVisible" />
+      <NotePad 
+        ref="notepadInstance" 
+        v-model:visible="notepadVisible" 
+        @remind-status-changed="handleRemindStatusChanged"
+      />
       <!-- <Setting v-model:visible="settingModalShow" /> -->
     </div>
 
@@ -1541,6 +1941,53 @@ function getNetworkModeButtonIcon() {
         />
       </div>
     </NModal>
+
+    <!-- 现代化提醒通知卡片 -->
+    <Teleport to="body">
+      <TransitionGroup name="notification-slide" tag="div" class="remind-notifications-container">
+        <div
+          v-for="notification in remindNotifications"
+          :key="notification.id"
+          v-show="notification.visible"
+          class="remind-notification-card"
+          :data-id="notification.id"
+          @mouseenter="pauseAutoClose"
+          @mouseleave="resumeAutoClose"
+        >
+          <div class="notification-header">
+            <div class="notification-icon">
+              <SvgIcon icon="boxicons--bell-ring" />
+            </div>
+            <div class="notification-title">提醒</div>
+            <button class="notification-close" @click="closeNotification(notification.id)">
+              <SvgIcon icon="material-symbols--close" />
+            </button>
+          </div>
+          
+          <div class="notification-content">
+            <div class="notification-note-title">
+              <SvgIcon icon="note" class="note-icon" />
+              {{ notification.title }}
+            </div>
+            <div class="notification-time">
+              <SvgIconOnline icon="mdi:clock-outline" class="time-icon" />
+              {{ notification.time }}
+            </div>
+          </div>
+          
+          <div class="notification-actions">
+            <button class="action-btn view-btn" @click="viewNotepad(notification.noteId, notification.id)">
+              <SvgIconOnline icon="mdi:eye-outline" />
+              查看
+            </button>
+            <button class="action-btn close-btn" @click="closeNotification(notification.id)">
+              <SvgIconOnline icon="mdi:check" />
+              知道了
+            </button>
+          </div>
+        </div>
+      </TransitionGroup>
+    </Teleport>
   </div>
 </template>
 
@@ -1804,5 +2251,256 @@ html {
 /* 隐藏左侧悬停检测区域 */
 .left-hover-area {
   pointer-events: none !important;
-}</style>
+}
+
+/* ========== 现代化提醒通知卡片样式 ========== */
+.remind-notifications-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 400px;
+  pointer-events: none; /* 容器不阻挡点击 */
+}
+
+.remind-notification-card {
+  pointer-events: auto; /* 卡片可以交互 */
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 249, 250, 0.95) 100%);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 16px;
+  min-width: 320px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: slideInRight 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.remind-notification-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 
+    0 12px 40px rgba(0, 0, 0, 0.15),
+    0 4px 12px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.notification-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.notification-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #667eea;
+  animation: bellShake 2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.notification-icon :deep(svg),
+.notification-icon :deep(.svg-icon),
+.notification-icon :deep(iconify-icon),
+.notification-icon :deep(span) {
+  width: 28px !important;
+  height: 28px !important;
+  color: #667eea !important;
+  display: block;
+  font-size: 28px !important;
+}
+
+@keyframes bellShake {
+  0%, 100% { transform: rotate(0deg); }
+  10%, 30%, 50% { transform: rotate(-10deg); }
+  20%, 40%, 60% { transform: rotate(10deg); }
+}
+
+.notification-title {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a1a;
+  letter-spacing: 0.3px;
+}
+
+.notification-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  transition: all 0.2s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.notification-close :deep(svg),
+.notification-close :deep(.svg-icon),
+.notification-close :deep(iconify-icon),
+.notification-close :deep(span) {
+  width: 18px !important;
+  height: 18px !important;
+  color: #666 !important;
+  display: block;
+  fill: currentColor !important;
+  font-size: 18px !important;
+}
+
+.notification-close:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #333;
+  transform: scale(1.1);
+}
+
+.notification-close:hover :deep(svg),
+.notification-close:hover :deep(.svg-icon) {
+  color: #333 !important;
+}
+
+.notification-content {
+  margin-bottom: 14px;
+}
+
+.notification-note-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #2c3e50;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.note-icon {
+  color: #667eea;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.notification-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #7f8c8d;
+  padding-left: 26px;
+}
+
+.time-icon {
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.notification-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.action-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.view-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.view-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+}
+
+.view-btn:active {
+  transform: translateY(0);
+}
+
+.close-btn {
+  background: rgba(0, 0, 0, 0.06);
+  color: #555;
+}
+
+.close-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #333;
+  transform: translateY(-1px);
+}
+
+.close-btn:active {
+  transform: translateY(0);
+}
+
+/* 滑入动画 */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.notification-slide-enter-active,
+.notification-slide-leave-active {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.notification-slide-enter-from {
+  opacity: 0;
+  transform: translateX(100px) scale(0.9);
+}
+
+.notification-slide-leave-to {
+  opacity: 0;
+  transform: translateX(100px) scale(0.8);
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .remind-notifications-container {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    max-width: none;
+  }
+  
+  .remind-notification-card {
+    min-width: auto;
+    width: 100%;
+  }
+}
+</style>
 

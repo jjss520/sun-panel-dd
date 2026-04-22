@@ -131,6 +131,7 @@
       "fileModified": "The file has been modified, import with caution",
       "import": "Import configuration",
       "moduleIcon": "Icon configuration",
+      "moduleNotepad": "Notepads & Reminders",
       "moduleStyle": "Style configuration",
       "selectExportData": "Select the configuration data to export",
       "selectImportData": "Select the configuration data to import",

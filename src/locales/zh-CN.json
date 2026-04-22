@@ -136,6 +136,7 @@
       "fileModified": "文件被修改过，谨慎导入",
       "import": "导入配置",
       "moduleIcon": "图标配置",
+      "moduleNotepad": "记事本和提醒",
       "moduleStyle": "样式配置",
       "selectExportData": "请选择要导出的配置数据",
       "selectImportData": "请选择要导入的配置数据",

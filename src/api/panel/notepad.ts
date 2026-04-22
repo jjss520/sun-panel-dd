@@ -5,6 +5,11 @@ export interface NotepadInfo {
     userId: number
     title: string
     content: string
+    remindTime?: string  // 提醒时间 ISO 格式
+    remindStatus?: number  // 0=未提醒, 1=已提醒
+    remindRepeat?: string  // 重复类型: none/daily/weekly/monthly/yearly
+    remindForce?: number  // 强制提醒: 0=关闭, 1=开启
+    remindAdvanceDays?: number  // 提前提醒天数（0=不提前）
     createdAt: string
     updatedAt: string
 }
@@ -22,7 +27,7 @@ export function getNotepadList() {
     })
 }
 
-export function saveNotepadContent(data: { id: number, title: string, content: string }) {
+export function saveNotepadContent(data: { id: number, title: string, content: string, remindTime?: string | null, remindStatus?: number, remindRepeat?: string, remindForce?: number, remindAdvanceDays?: number }) {
     return post<NotepadInfo>({
         url: '/panel/notepad/save',
         data,

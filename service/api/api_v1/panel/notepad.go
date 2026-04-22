@@ -59,9 +59,14 @@ func (a *Notepad) GetList(c *gin.Context) {
 func (a *Notepad) Save(c *gin.Context) {
 	userInfo, _ := base.GetCurrentUserInfo(c)
 	type Req struct {
-		Id      uint   `json:"id"`
-		Title   string `json:"title"`
-		Content string `json:"content"`
+		Id                uint   `json:"id"`
+		Title             string `json:"title"`
+		Content           string `json:"content"`
+		RemindTime        string `json:"remindTime,omitempty"`
+		RemindStatus      int    `json:"remindStatus"`
+		RemindRepeat      string `json:"remindRepeat,omitempty"`
+		RemindForce       int    `json:"remindForce"`
+		RemindAdvanceDays int    `json:"remindAdvanceDays"`
 	}
 	var req Req
 	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
@@ -78,6 +83,11 @@ func (a *Notepad) Save(c *gin.Context) {
 		}
 		notepad.Title = req.Title
 		notepad.Content = req.Content
+		notepad.RemindTime = req.RemindTime
+		notepad.RemindStatus = req.RemindStatus
+		notepad.RemindRepeat = req.RemindRepeat
+		notepad.RemindForce = req.RemindForce
+		notepad.RemindAdvanceDays = req.RemindAdvanceDays
 		if err := global.Db.Save(&notepad).Error; err != nil {
 			apiReturn.Error(c, "Update Failed")
 			return
@@ -85,9 +95,14 @@ func (a *Notepad) Save(c *gin.Context) {
 	} else {
 		// Create
 		notepad = models.Notepad{
-			UserID:  userInfo.ID,
-			Title:   req.Title,
-			Content: req.Content,
+			UserID:            userInfo.ID,
+			Title:             req.Title,
+			Content:           req.Content,
+			RemindTime:        req.RemindTime,
+			RemindStatus:      req.RemindStatus,
+			RemindRepeat:      req.RemindRepeat,
+			RemindForce:       req.RemindForce,
+			RemindAdvanceDays: req.RemindAdvanceDays,
 		}
 		if err := global.Db.Create(&notepad).Error; err != nil {
 			apiReturn.Error(c, "Create Failed")

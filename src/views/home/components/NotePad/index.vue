@@ -1,18 +1,229 @@
+<template>
+  <Teleport to="body">
+    <transition name="fade">
+      <div 
+        v-if="visible" 
+        class="notepad-overlay"
+        @click.self="handleClose"
+      >
+        <div 
+          ref="notepadRef"
+          class="notepad-container"
+          :style="{ left: x + 'px', top: y + 'px' }"
+        >
+          <!-- 左侧列表 -->
+          <div class="notepad-sidebar">
+            <!-- 顶部标题栏 -->
+            <div class="sidebar-header">
+              <h2 class="sidebar-title">备忘录</h2>
+              <div class="header-actions">
+                <SvgIcon 
+                  class="action-icon" 
+                  icon="mdi:chevron-down" 
+                  @click="showSortMenu = !showSortMenu"
+                />
+              </div>
+            </div>
+
+            <!-- 搜索框 -->
+            <div class="search-box">
+              <SvgIcon class="search-icon" icon="mdi:magnify" />
+              <input 
+                v-model="searchKeyword"
+                type="text" 
+                placeholder="search"
+                class="search-input"
+              />
+            </div>
+
+            <!-- 便签列表 -->
+            <div class="note-list">
+              <div 
+                v-for="note in filteredNotes" 
+                :key="note.id"
+                class="note-item"
+                :class="{ active: currentNote.id === note.id }"
+                @click="selectNote(note)"
+              >
+                <div class="note-item-header">
+                  <span class="note-item-title">{{ note.title || '无标题' }}</span>
+                  <!-- 提醒铃铛图标 -->
+                  <SvgIconOnline 
+                    v-if="note.remindStatus === 0" 
+                    class="remind-icon active"
+                    icon="mdi:bell-outline"
+                  />
+                  <SvgIconOnline 
+                    v-else
+                    class="remind-icon"
+                    icon="mdi:bell-off-outline"
+                  />
+                  <!-- 删除按钮 -->
+                  <SvgIcon 
+                    class="delete-icon" 
+                    icon="material-symbols--delete-outline"
+                    @click.stop="deleteNote(note)"
+                  />
+                </div>
+                <div class="note-item-time">{{ formatDate(note.updatedAt) }}</div>
+              </div>
+            </div>
+
+            <!-- 底部新建按钮 -->
+            <div class="sidebar-footer">
+              <button class="new-note-btn" @click="createNew">
+                <SvgIcon icon="pajamas--doc-new" />
+              </button>
+            </div>
+          </div>
+
+          <!-- 右侧编辑区 -->
+          <div class="notepad-editor">
+            <!-- 编辑器顶部 -->
+            <div class="editor-header">
+              <h1 class="editor-title">{{ currentNote.title || '无标题' }}</h1>
+              <div class="editor-actions">
+                <!-- 关闭按钮 -->
+                <SvgIcon class="action-icon" icon="material-symbols--close" @click="handleClose" />
+              </div>
+            </div>
+
+            <!-- 编辑内容区 -->
+            <div 
+              ref="editorRef"
+              class="editor-content"
+              contenteditable="true"
+              @input="handleInput"
+              @paste="handlePaste"
+              placeholder="请输入笔记内容"
+            ></div>
+
+            <!-- 底部信息 -->
+            <div class="editor-footer">
+              <span class="footer-text">
+                最后编辑：{{ formatFullDate(currentNote.updatedAt) }}，创建：{{ formatFullDate(currentNote.createdAt) }}
+              </span>
+            </div>
+
+            <!-- 提醒时间选择器 -->
+            <transition name="slide-up">
+              <div v-if="showRemindPicker" class="remind-picker">
+                <div class="remind-picker-header">选择提醒时间：</div>
+                <NDatePicker
+                  v-model:value="remindTimestamp"
+                  type="datetime"
+                  :min="Date.now()"
+                  format="yyyy-MM-dd HH:mm"
+                  placeholder="选择日期和时间"
+                  clearable
+                  :default-time="['12:00:00', '12:00:00']"
+                  :time-picker-props="{ format: 'HH:mm', use12Hours: false }"
+                  :actions="['confirm', 'clear']"
+                  @update:value="(ts: number | null) => handleTimeSelect(ts)"
+                  class="w-full"
+                />
+                
+                <!-- 重复选项 -->
+                <div class="remind-repeat-section">
+                  <div class="repeat-label">重复：</div>
+                  <select 
+                    v-model="currentRepeatType" 
+                    class="repeat-select"
+                    @change="handleRepeatChange"
+                  >
+                    <option value="none">不重复</option>
+                    <option value="daily">每天</option>
+                    <option value="weekly">每周</option>
+                    <option value="monthly">每月</option>
+                    <option value="yearly">每年</option>
+                  </select>
+                </div>
+                
+                <!-- 强制提醒开关 -->
+                <div class="remind-force-section">
+                  <label class="force-label">
+                    <input 
+                      type="checkbox" 
+                      :checked="currentRemindForce === 1"
+                      @change="handleForceChange"
+                      class="force-checkbox"
+                    />
+                    <span>强制提醒（过期后每小时提醒一次）</span>
+                  </label>
+                </div>
+                
+                <!-- 提前提醒选项 -->
+                <transition name="slide-down">
+                  <div v-if="showAdvanceDays" class="remind-advance-section">
+                    <div class="advance-label">提前提醒：</div>
+                    <select 
+                      v-model="currentAdvanceDays" 
+                      class="advance-select"
+                      @change="handleAdvanceChange"
+                    >
+                      <option v-for="opt in advanceDaysOptions" :key="opt.value" :value="opt.value">
+                        {{ opt.label }}
+                      </option>
+                    </select>
+                    <div v-if="currentAdvanceDays > 0 && currentNote.remindTime" class="advance-hint">
+                      💡 下次实际提醒：{{ nextActualRemindTime }}
+                    </div>
+                  </div>
+                </transition>
+                
+                <div class="remind-picker-info">
+                  <div v-if="currentNote.remindStatus === 0 && currentNote.remindTime">
+                    已设置：{{ formatRemindTime(currentNote.remindTime) }}
+                    <span v-if="currentNote.remindRepeat && currentNote.remindRepeat !== 'none'" class="repeat-badge">
+                      {{ getRepeatText(currentNote.remindRepeat) }}
+                    </span>
+                    <span v-if="currentNote.remindAdvanceDays && currentNote.remindAdvanceDays > 0" class="advance-badge">
+                      提前{{ currentNote.remindAdvanceDays }}天
+                    </span>
+                  </div>
+                  <div v-else>未设置提醒</div>
+                </div>
+                
+                <!-- 确认按钮 -->
+                <div class="remind-picker-actions">
+                  <button class="confirm-btn" @click="closeRemindPicker">
+                    <SvgIcon icon="mdi:check" />
+                    完成
+                  </button>
+                </div>
+              </div>
+            </transition>
+          </div>
+
+          <!-- 悬浮提醒按钮 -->
+          <div 
+            class="remind-float-btn"
+            :class="{ active: currentNote.remindStatus === 0 }"
+            :title="currentNote.remindTime ? '已设置提醒: ' + formatRemindTime(currentNote.remindTime) : '设置提醒'"
+            @click="handleOpenRemindPicker"
+          >
+            <SvgIconOnline :icon="currentNote.remindStatus === 0 ? 'mdi:bell-outline' : 'mdi:bell-off-outline'" />
+            <span v-if="currentNote.remindStatus === 0" class="remind-dot"></span>
+          </div>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
+</template>
+
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, watch, h } from 'vue'
 import { SvgIcon, SvgIconOnline } from '@/components/common'
-import { useMessage, useDialog } from 'naive-ui'
+import { useMessage, useDialog, NDatePicker } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { useDraggable, useDebounceFn, useStorage } from '@vueuse/core'
 import { 
     getNotepadList, 
-    saveNotepadContent, 
-    uploadNotepadFile, 
+    saveNotepadContent,
     deleteNotepad,
     type NotepadInfo 
 } from '@/api/panel/notepad'
 import { useAuthStore } from '@/store/modules/auth'
-import { VisitMode } from '@/enums/auth'
 
 const props = defineProps<{
   visible: boolean
@@ -20,6 +231,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:visible', visible: boolean): void
+  (e: 'remindStatusChanged', noteId: number): void  // 提醒状态变化事件
 }>()
 
 const { t } = useI18n()
@@ -28,23 +240,24 @@ const dialog = useDialog()
 const authStore = useAuthStore()
 const editorRef = ref<HTMLDivElement | null>(null)
 const notepadRef = ref<HTMLElement | null>(null)
-const headerRef = ref<HTMLElement | null>(null)
-const fileInputRef = ref<HTMLInputElement | null>(null)
 
-// 状态 - 使用 useStorage 持久化
+// 状态
 const currentNote = useStorage<Partial<NotepadInfo>>('sun-panel-notepad-current', { id: 0, title: '', content: '' })
 const noteList = useStorage<NotepadInfo[]>('sun-panel-notepad-list', [])
-const showList = ref(false)
+const searchKeyword = ref('')
+const showSortMenu = ref(false)
+const showRemindPicker = ref(false)
+const currentRepeatType = ref<string>('none') // 当前选择的重复类型
+const currentRemindForce = ref<number>(0) // 当前强制提醒状态 0=关闭 1=开启
+const currentAdvanceDays = ref<number>(0) // 当前提前提醒天数
 
-// 窗口初始位置
+// 窗口拖拽
 const { x, y } = useDraggable(notepadRef, {
-  initialValue: { x: window.innerWidth - 370, y: 80 },
-  handle: headerRef
+  initialValue: { x: (window.innerWidth - 1000) / 2, y: (window.innerHeight - 600) / 2 }
 })
 
 // 初始化
 onMounted(async () => {
-    // 预加载：只有当本地缓存为空时才请求
     if (noteList.value.length === 0) {
         await loadList()
     }
@@ -52,10 +265,7 @@ onMounted(async () => {
 
 // 加载列表
 const loadList = async () => {
-    // 检查用户是否已登录，未登录则不请求接口
-    if (!authStore.token) {
-        return
-    }
+    if (!authStore.token) return
     try {
         const res = await getNotepadList()
         if (res.code === 0) {
@@ -66,19 +276,17 @@ const loadList = async () => {
     }
 }
 
-// 生成标题（现在接受内容参数，或者直接读取editor）
+// 生成标题
 const generateTitle = (textContent?: string) => {
-    // 优先：检查是否有 H1 标签，如果有，将其作为标题
     if (editorRef.value) {
         const h1 = editorRef.value.querySelector('h1')
         if (h1 && h1.innerText.trim()) {
             return h1.innerText.trim()
         }
     }
-
     const text = textContent !== undefined ? textContent : (editorRef.value?.innerText.trim() || '')
     if (text) {
-        return text.substring(0, 5)
+        return text.substring(0, 10)
     }
     if (currentNote.value.id) {
         return `便签${currentNote.value.id}` 
@@ -86,14 +294,60 @@ const generateTitle = (textContent?: string) => {
     return `便签${noteList.value.length + 1}`
 }
 
+// 过滤列表
+const filteredNotes = computed(() => {
+    if (!searchKeyword.value) return noteList.value
+    const keyword = searchKeyword.value.toLowerCase()
+    return noteList.value.filter(note => 
+        note.title?.toLowerCase().includes(keyword) || 
+        note.content?.toLowerCase().includes(keyword)
+    )
+})
+
+// 格式化日期
+const formatDate = (dateStr?: string) => {
+    if (!dateStr) return ''
+    const date = new Date(dateStr)
+    return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+const formatFullDate = (dateStr?: string) => {
+    if (!dateStr) return ''
+    const date = new Date(dateStr)
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
+}
+
+// 格式化提醒时间（不显示秒）
+const formatRemindTime = (dateStr?: string) => {
+    if (!dateStr) return ''
+    const date = new Date(dateStr)
+    return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+// 格式化本地时间字符串（避免toISOString导致时区偏差）
+const formatLocalDateTime = (date: Date): string => {
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    const h = String(date.getHours()).padStart(2, '0')
+    const mi = String(date.getMinutes()).padStart(2, '0')
+    const s = String(date.getSeconds()).padStart(2, '0')
+    return `${y}-${m}-${d}T${h}:${mi}:${s}`
+}
+
 // 输入处理
 const handleInput = () => {
     if (!editorRef.value) return
-    // 实时更新标题
     const text = editorRef.value.innerText.trim()
-     currentNote.value.title = generateTitle(text)
-    // 触发保存
+    currentNote.value.title = generateTitle(text)
     saveContent()
+}
+
+// 粘贴处理
+const handlePaste = (e: ClipboardEvent) => {
+    e.preventDefault()
+    const text = e.clipboardData?.getData('text/plain') || ''
+    document.execCommand('insertText', false, text)
 }
 
 // 核心保存逻辑
@@ -103,20 +357,23 @@ const handleSave = async () => {
             const content = editorRef.value.innerHTML
             const text = editorRef.value.innerText.trim()
             const title = generateTitle(text)
-            const saveId = currentNote.value.id || 0 // 保存时的ID快照
+            const saveId = currentNote.value.id || 0
             
             const res = await saveNotepadContent({ 
                 id: saveId,
                 title: title,
-                content: content 
+                content: content,
+                remindTime: currentNote.value.remindTime || null,
+                remindStatus: currentNote.value.remindStatus || 0,
+                remindRepeat: currentNote.value.remindRepeat || 'none',
+                remindForce: currentNote.value.remindForce || 0,
+                remindAdvanceDays: currentNote.value.remindAdvanceDays || 0
             })
             
             if (res.code === 0) {
-                // 并发检查：如果当前编辑器已经切换到别的便签（或者新建了），则不覆盖 currentNote
                 if (currentNote.value.id === saveId) {
                     currentNote.value = res.data
                 }
-                // 刷新列表
                 await loadList()
             }
         } catch (error) {
@@ -130,58 +387,390 @@ const saveContent = useDebounceFn(handleSave, 1000)
 
 // 切换便签
 const selectNote = (note: NotepadInfo) => {
-    currentNote.value = { ...note } // 立即切换状态
+    console.log('[NotePad] selectNote:', note.title, 'remindForce:', note.remindForce)
+    currentNote.value = { ...note }
+    currentRepeatType.value = note.remindRepeat || 'none'
+    currentRemindForce.value = note.remindForce || 0
+    currentAdvanceDays.value = note.remindAdvanceDays || 0
+    console.log('[NotePad] currentRemindForce set to:', currentRemindForce.value)
     if (editorRef.value) {
         editorRef.value.innerHTML = note.content || ''
-        // 绑定文件下载事件
         nextTick(() => {
             bindFileDownloadEvents()
         })
     }
-    showList.value = false
 }
 
 // 新建便签
 const createNew = () => {
-    // 不强制 flush，直接切换状态。旧的 saveContent 如果在跑，会因 ID 不匹配而被忽略更新 currentNote
     currentNote.value = { id: 0, title: `便签${noteList.value.length + 1}`, content: '' }
+    currentRepeatType.value = 'none'
+    currentAdvanceDays.value = 0
     if (editorRef.value) {
         editorRef.value.innerHTML = ''
-        editorRef.value.focus() // 聚焦
+        editorRef.value.focus()
     }
-    showList.value = false
 }
 
-// 暴露刷新方法给父组件
+// 关闭
+const handleClose = () => {
+    handleSave()
+    emit('update:visible', false)
+}
+
+// 绑定文件下载事件
+const bindFileDownloadEvents = () => {
+    if (!editorRef.value) return
+    const fileLinks = editorRef.value.querySelectorAll('.file-attachment')
+    fileLinks.forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault()
+            const url = link.getAttribute('href')
+            const filename = link.getAttribute('data-filename')
+            if (url && filename) {
+                downloadFile(url, filename)
+            }
+        })
+    })
+}
+
+// 下载文件
+const downloadFile = async (url: string, filename: string) => {
+    try {
+        const response = await fetch(url)
+        if (!response.ok) throw new Error('Network response was not ok')
+        const blob = await response.blob()
+        const urlCreator = window.URL || window.webkitURL
+        const objectUrl = urlCreator.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = objectUrl
+        link.download = filename
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        setTimeout(() => urlCreator.revokeObjectURL(objectUrl), 100)
+    } catch (error) {
+        message.error(t('notepad.saveFailed'))
+    }
+}
+
+// 设置提醒
+const remindTimestamp = computed({
+    get: () => {
+        if (!currentNote.value.remindTime) return null
+        const date = new Date(currentNote.value.remindTime)
+        // 检查日期是否有效
+        if (isNaN(date.getTime())) return null
+        return date.getTime()
+    },
+    set: () => {}
+})
+
+// 处理时间选择（确保秒数为0）
+const handleTimeSelect = (timestamp: number | null) => {
+    if (timestamp) {
+        // 将秒数设置为0
+        const date = new Date(timestamp)
+        date.setSeconds(0, 0) // 秒和毫秒都设为0
+        setRemind(date.getTime(), false)
+    } else {
+        setRemind(null, false)
+    }
+}
+
+const setRemind = async (timestamp: number | null, autoClose: boolean = false) => {
+    if (!currentNote.value.id) {
+        message.warning('请先保存便签后再设置提醒')
+        return
+    }
+    try {
+        const remindTime = timestamp ? formatLocalDateTime(new Date(timestamp)) : null
+        await saveNotepadContent({
+            id: currentNote.value.id,
+            title: currentNote.value.title || '',
+            content: currentNote.value.content || '',
+            remindTime: remindTime,
+            remindStatus: remindTime ? 0 : 1,
+            remindRepeat: currentRepeatType.value,
+            remindForce: currentRemindForce.value,
+            remindAdvanceDays: currentAdvanceDays.value
+        })
+        currentNote.value.remindTime = remindTime || undefined
+        currentNote.value.remindStatus = remindTime ? 0 : 1
+        currentNote.value.remindRepeat = currentRepeatType.value
+        currentNote.value.remindForce = currentRemindForce.value
+        currentNote.value.remindAdvanceDays = currentAdvanceDays.value
+        await loadList()
+        
+        // 通知父组件清除已提醒记录（无论是设置新提醒还是取消提醒）
+        emit('remindStatusChanged', currentNote.value.id)
+        
+        if (remindTime) {
+            const repeatText = getRepeatText(currentRepeatType.value)
+            const forceText = currentRemindForce.value ? ' [强制]' : ''
+            const advanceText = currentAdvanceDays.value > 0 ? ` [提前${currentAdvanceDays.value}天]` : ''
+            message.success(`已设置提醒：${formatRemindTime(remindTime)} ${repeatText !== '不重复' ? '(' + repeatText + ')' : ''}${forceText}${advanceText}`)
+        } else {
+            message.success('已取消提醒')
+        }
+        // 只在明确需要时才关闭选择器
+        if (autoClose) {
+            showRemindPicker.value = false
+        }
+    } catch (e) {
+        message.error('设置提醒失败')
+    }
+}
+
+// 关闭提醒选择器
+const closeRemindPicker = () => {
+    showRemindPicker.value = false
+}
+
+// 打开提醒选择器（确保状态同步）
+const handleOpenRemindPicker = () => {
+    console.log('[NotePad] 打开提醒选择器')
+    console.log('[NotePad] currentNote.remindForce:', currentNote.value.remindForce)
+    console.log('[NotePad] currentNote.remindAdvanceDays:', currentNote.value.remindAdvanceDays)
+    console.log('[NotePad] currentRemindForce before:', currentRemindForce.value)
+    console.log('[NotePad] currentAdvanceDays before:', currentAdvanceDays.value)
+    
+    // 从 currentNote 重新读取 remindForce 状态
+    if (currentNote.value.remindForce !== undefined) {
+        currentRemindForce.value = currentNote.value.remindForce
+        console.log('[NotePad] 从 currentNote 同步 remindForce:', currentRemindForce.value)
+    }
+    
+    // 从 currentNote 重新读取 remindAdvanceDays 状态
+    if (currentNote.value.remindAdvanceDays !== undefined) {
+        currentAdvanceDays.value = currentNote.value.remindAdvanceDays
+        console.log('[NotePad] 从 currentNote 同步 remindAdvanceDays:', currentAdvanceDays.value)
+    }
+    
+    showRemindPicker.value = !showRemindPicker.value
+    console.log('[NotePad] currentRemindForce after:', currentRemindForce.value)
+    console.log('[NotePad] currentAdvanceDays after:', currentAdvanceDays.value)
+}
+
+// 处理重复类型变化
+const handleRepeatChange = () => {
+    // 先同步到 currentNote，防止自动保存时使用旧值
+    currentNote.value.remindRepeat = currentRepeatType.value
+    
+    if (currentNote.value.id && currentNote.value.remindTime) {
+        setRemind(new Date(currentNote.value.remindTime).getTime())
+    }
+}
+
+// 处理强制提醒变化
+const handleForceChange = (event: Event) => {
+    const target = event.target as HTMLInputElement
+    currentRemindForce.value = target.checked ? 1 : 0
+    // 先同步到 currentNote，防止自动保存时使用旧值
+    currentNote.value.remindForce = currentRemindForce.value
+    if (currentNote.value.id && currentNote.value.remindTime) {
+        setRemind(new Date(currentNote.value.remindTime).getTime())
+    }
+}
+
+// 处理提前天数变化
+const handleAdvanceChange = () => {
+    // 先同步到 currentNote，防止自动保存时使用旧值
+    currentNote.value.remindAdvanceDays = currentAdvanceDays.value
+    
+    if (currentNote.value.id && currentNote.value.remindTime) {
+        setRemind(new Date(currentNote.value.remindTime).getTime())
+    }
+}
+
+// 获取重复类型的文本
+const getRepeatText = (repeatType?: string) => {
+    const map: Record<string, string> = {
+        'none': '不重复',
+        'daily': '每天',
+        'weekly': '每周',
+        'monthly': '每月',
+        'yearly': '每年'
+    }
+    return map[repeatType || 'none'] || '不重复'
+}
+
+// 是否显示提前提醒选项
+const showAdvanceDays = computed(() => {
+    return currentRepeatType.value !== 'none' && currentRepeatType.value !== 'daily'
+})
+
+// 提前天数选项（根据重复类型限制最大值）
+const advanceDaysOptions = computed(() => {
+    const repeatType = currentRepeatType.value
+    const maxDaysMap: Record<string, number> = {
+        'none': 0,
+        'daily': 0,
+        'weekly': 6,
+        'monthly': 29,
+        'yearly': 364
+    }
+    
+    const maxDays = maxDaysMap[repeatType] || 0
+    const options = [{ value: 0, label: '不提前' }]
+    
+    for (let i = 1; i <= maxDays; i++) {
+        options.push({ value: i, label: `提前${i}天` })
+    }
+    
+    return options
+})
+
+// 下次实际提醒时间显示
+const nextActualRemindTime = computed(() => {
+    if (!currentNote.value.remindTime || currentAdvanceDays.value === 0) {
+        return ''
+    }
+    
+    // 计算下一次基准提醒时间（考虑重复类型）
+    const baseTime = new Date(currentNote.value.remindTime)
+    const now = new Date()
+    let nextBaseTime = new Date(baseTime)
+    
+    // 如果基准时间已过，计算下一个周期的基准时间
+    if (nextBaseTime <= now && currentNote.value.remindRepeat && currentNote.value.remindRepeat !== 'none') {
+        while (nextBaseTime <= now) {
+            switch (currentNote.value.remindRepeat) {
+                case 'daily':
+                    nextBaseTime.setDate(nextBaseTime.getDate() + 1)
+                    break
+                case 'weekly':
+                    nextBaseTime.setDate(nextBaseTime.getDate() + 7)
+                    break
+                case 'monthly':
+                    nextBaseTime.setMonth(nextBaseTime.getMonth() + 1)
+                    break
+                case 'yearly':
+                    nextBaseTime.setFullYear(nextBaseTime.getFullYear() + 1)
+                    break
+            }
+        }
+    }
+    
+    // 实际提醒时间 = 下一次基准时间 - 提前天数
+    const actualTime = new Date(nextBaseTime)
+    actualTime.setDate(actualTime.getDate() - currentAdvanceDays.value)
+    
+    console.log('[NotePad] 计算实际提醒时间:', {
+        baseTime: formatLocalDateTime(baseTime),
+        nextBaseTime: formatLocalDateTime(nextBaseTime),
+        advanceDays: currentAdvanceDays.value,
+        actualTime: formatLocalDate(actualTime)
+    })
+    
+    return formatLocalDate(actualTime)
+})
+
+// 格式化本地日期（不含时间）
+const formatLocalDate = (date: Date): string => {
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+}
+
+// 提醒检查
+const checkReminds = () => {
+    const now = new Date()
+    noteList.value.forEach(note => {
+        if (note.remindTime && note.remindStatus === 0) {
+            const remindTime = new Date(note.remindTime)
+            if (now >= remindTime && (now.getTime() - remindTime.getTime()) < 60000) {
+                showRemindNotification(note)
+                markAsReminded(note.id)
+            }
+        }
+    })
+}
+
+const showRemindNotification = (note: NotepadInfo) => {
+    dialog.info({
+        title: '⏰ 提醒',
+        content: () => h('div', [
+            h('p', { style: 'font-weight: bold; margin-bottom: 8px;' }, note.title),
+            h('p', { style: 'color: #666;' }, '设置的提醒时间已到！')
+        ]),
+        positiveText: '查看',
+        negativeText: '关闭',
+        onPositiveClick: () => {
+            selectNote(note)
+            emit('update:visible', true)
+        }
+    })
+    if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('⏰ 提醒', {
+            body: note.title,
+            icon: '/logo.png'
+        })
+    }
+}
+
+const markAsReminded = async (id: number) => {
+    try {
+        const note = noteList.value.find(n => n.id === id)
+        if (note) {
+            // 对于重复提醒，不更新 remindTime，保持原始基准时间
+            // 只重置 remindStatus 为 0（未提醒），下次检查时会自动计算下一个周期
+            let remindTime = note.remindTime  // 保持原值不变
+            let remindStatus = 1  // 默认标记为已提醒
+            
+            // 如果是重复提醒，保持 remindStatus=0 以便下次继续检查
+            if (note.remindRepeat && note.remindRepeat !== 'none') {
+                remindStatus = 0
+                console.log(`[NotePad] 重复提醒，保持 remindStatus=0，基准时间不变: ${remindTime}`)
+            }
+            
+            await saveNotepadContent({
+                id: note.id,
+                title: note.title,
+                content: note.content,
+                remindTime: remindTime,  // 保持原始基准时间
+                remindStatus: remindStatus,
+                remindRepeat: note.remindRepeat || 'none',
+                remindForce: note.remindForce || 0,
+                remindAdvanceDays: note.remindAdvanceDays || 0  // 保留提前天数
+            })
+            await loadList()
+            
+            // 通知父组件提醒状态已变化
+            emit('remindStatusChanged', id)
+        }
+    } catch (e) {
+        console.error('Mark reminded error', e)
+    }
+}
+
+// 暴露方法
 const refreshData = async () => {
     await loadList()
 }
-defineExpose({ refreshData })
 
-// 监听显示状态
-watch(() => props.visible, (val) => {
-    if (val) {
-        initData()
-    } else {
-        // 关闭时，立即执行保存
-        handleSave()
-    }
+defineExpose({ 
+    refreshData,
+    checkReminds,
+    markAsReminded,
+    selectNote
 })
 
 // 删除便签
-const deleteNote = async (note: NotepadInfo) => {
+const deleteNote = (note: NotepadInfo) => {
     dialog.warning({
-        title: t('common.warning'),
-        content: t('common.deleteConfirmByName', { name: note.title || '便签' }), 
-        positiveText: t('common.confirm'),
-        negativeText: t('common.cancel'),
+        title: '确认删除',
+        content: `确定要删除便签「${note.title || '无标题'}」吗？`,
+        positiveText: '删除',
+        negativeText: '取消',
         onPositiveClick: async () => {
             try {
                 const res = await deleteNotepad({ id: note.id })
                 if (res.code === 0) {
-                    message.success(t('common.deleteSuccess'))
+                    message.success('删除成功')
                     await loadList()
-                    // 如果删除的是当前选中的
+                    // 如果删除的是当前选中的便签，清空编辑器
                     if (currentNote.value.id === note.id) {
                         if (noteList.value.length > 0) {
                             selectNote(noteList.value[0])
@@ -191,478 +780,552 @@ const deleteNote = async (note: NotepadInfo) => {
                     }
                 }
             } catch (e) {
-                message.error(t('common.deleteFail'))
+                message.error('删除失败')
             }
         }
     })
 }
 
-// 插入文件/图片
-const insertFileLink = (fileInfo: { name: string, type: string, url: string }) => {
-    if (!editorRef.value) return
-    
-    let htmlFragment = ''
-    let fullUrl = fileInfo.url
-    
-    if (fileInfo.type.startsWith('image/')) {
-        htmlFragment = `<div><img class="note-image" src="${fullUrl}" alt="${fileInfo.name}" /></div>`
+// 监听显示状态
+watch(() => props.visible, (val) => {
+    if (val) {
+        initData()
     } else {
-        // 使用 data-filename 属性存储原始文件名，用于下载时使用
-        htmlFragment = `&nbsp;<a href="${fullUrl}" class="file-attachment" contenteditable="false" title="${t('notepad.clickToDownload')}" data-filename="${fileInfo.name}">📁&nbsp;${fileInfo.name}</a>&nbsp;`
+        handleSave()
     }
-    
-    editorRef.value.insertAdjacentHTML('beforeend', htmlFragment)
-    saveContent() // 触发保存
-    
-    nextTick(() => {
-        if (editorRef.value) {
-           editorRef.value.scrollTop = editorRef.value.scrollHeight
-           // 为新添加的文件链接绑定点击事件
-           bindFileDownloadEvents()
-        }
-    })
-}
+})
 
-// 绑定文件下载事件，确保下载时使用原始文件名
-const bindFileDownloadEvents = () => {
-    if (!editorRef.value) return
-    
-    const fileLinks = editorRef.value.querySelectorAll('.file-attachment')
-    fileLinks.forEach(link => {
-        link.addEventListener('click', (e) => {
-            e.preventDefault()
-            const url = link.getAttribute('href')
-            const filename = link.getAttribute('data-filename')
-            
-            if (url && filename) {
-                downloadFile(url, filename)
-            }
-        })
-    })
-}
-
-// 下载文件并指定文件名
-const downloadFile = async (url: string, filename: string) => {
-    try {
-        const response = await fetch(url)
-        if (!response.ok) {
-            throw new Error('Network response was not ok')
-        }
-        
-        const blob = await response.blob()
-        const urlCreator = window.URL || window.webkitURL
-        const objectUrl = urlCreator.createObjectURL(blob)
-        
-        const link = document.createElement('a')
-        link.href = objectUrl
-        link.download = filename
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        
-        // 释放对象URL
-        setTimeout(() => {
-            urlCreator.revokeObjectURL(objectUrl)
-        }, 100)
-    } catch (error) {
-        message.error(t('notepad.saveFailed'))
-    }
-}
-
-// 通用上传逻辑
-const uploadFile = async (file: File) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    try {
-        const res = await uploadNotepadFile(formData)
-        if (res.code === 0) {
-            const data = res.data
-            insertFileLink({
-                name: data.name || file.name,
-                type: data.type || file.type,
-                url: data.url
-            })
-        } else {
-             message.error(t('notepad.saveFailed'))
-        }
-    } catch (e) {
-        message.error(t('notepad.saveFailed'))
-    }
-}
-
-// 处理拖拽上传
-const handleDrop = async (e: DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    
-    if (e.dataTransfer && e.dataTransfer.files) {
-        const files = Array.from(e.dataTransfer.files)
-        for (const file of files) {
-            await uploadFile(file)
-        }
-    }
-}
-
-// 触发文件选择
-const triggerUpload = () => {
-    fileInputRef.value?.click()
-}
-
-// 处理文件选择
-const handleFileSelect = async (e: Event) => {
-    const input = e.target as HTMLInputElement
-    if (input.files && input.files.length > 0) {
-        const files = Array.from(input.files)
-        for (const file of files) {
-             await uploadFile(file)
-        }
-        input.value = '' 
-    }
-}
-
-const handleDragOver = (e: DragEvent) => {
-    e.preventDefault()
-}
-
-// 工具栏操作
-const execCommand = (command: string, value?: string) => {
-    if (command === 'removeFormat') {
-        // 清除内联格式（粗体、斜体等）
-        document.execCommand('removeFormat', false, value)
-        // 重置块级格式（标题、代码块等）为普通文本 div
-        document.execCommand('formatBlock', false, 'div')
-    } else {
-        document.execCommand(command, false, value)
-        
-        // 特殊处理：如果插入了代码块，确保后面有一个空行，方便跳出
-        if (command === 'formatBlock' && value === 'PRE') {
-            const selection = window.getSelection()
-            if (selection && selection.rangeCount > 0) {
-                const range = selection.getRangeAt(0)
-                let node = range.commonAncestorContainer
-                // 如果是文本节点，取父节点
-                if (node.nodeType === Node.TEXT_NODE && node.parentNode) {
-                    node = node.parentNode
-                }
-                
-                // 向上查找 PRE 元素
-                let el = node as HTMLElement
-                while (el && el.tagName !== 'PRE' && el !== editorRef.value) {
-                    if (!el.parentElement) break
-                    el = el.parentElement
-                }
-                
-                // 如果找到了 PRE 且它是最后一个元素，插入一个空 div
-                if (el && el.tagName === 'PRE') {
-                    if (!el.nextElementSibling) {
-                        const div = document.createElement('div')
-                        div.innerHTML = '<br>'
-                        el.parentNode?.insertBefore(div, el.nextSibling)
-                    }
-                }
-            }
-        }
-    }
-    handleInput()
-}
-
-// 初始化/打开时加载
 const initData = async () => {
+    console.log('[NotePad] initData 开始')
     await loadList()
+    console.log('[NotePad] 列表加载完成，共', noteList.value.length, '个便签')
     
-    // 如果列表为空，保持新建状态
-    if (noteList.value.length === 0) {
-        if (currentNote.value.id !== 0) {
-             createNew()
-        }
-        return
-    }
-
-    // 如果只是打开（id=0且空），选中第一个
-    if (currentNote.value.id === 0 && !currentNote.value.content && !currentNote.value.title) {
-        selectNote(noteList.value[0])
-    } else {
-        // 如果当前有选中的ID，检查是否还在列表中
-        const exist = noteList.value.find(n => n.id === currentNote.value.id)
-        if (exist) {
-            // 同步数据：使用最新的服务器数据更新当前便签
-            currentNote.value = { ...exist }
-            if (editorRef.value) {
-                const isFocused = document.activeElement === editorRef.value
-                editorRef.value.innerHTML = exist.content || ''
-                 // 如果之前由焦点保留焦点（虽然打开时不应该有焦点）
-                if (isFocused) {
-                    // restore cursor? 比较复杂，但在打开瞬间通常不需要。
-                }
-                // 绑定文件下载事件
-                nextTick(() => {
-                    bindFileDownloadEvents()
-                })
-            }
+    // 如果有当前便签ID，从列表中查找并恢复
+    if (currentNote.value.id && noteList.value.length > 0) {
+        const savedNote = noteList.value.find(n => n.id === currentNote.value.id)
+        console.log('[NotePad] 查找便签 ID:', currentNote.value.id, '找到:', !!savedNote)
+        if (savedNote) {
+            // 恢复便签内容和状态（selectNote 会设置 currentRemindForce）
+            console.log('[NotePad] 准备调用 selectNote, remindForce:', savedNote.remindForce)
+            selectNote(savedNote)
         } else {
-            // 如果不在了，选中第一个
+            // 如果找不到，选中第一个便签
+            console.log('[NotePad] 未找到，选中第一个')
             selectNote(noteList.value[0])
         }
+    } else if (noteList.value.length > 0) {
+        // 如果没有当前便签ID，选中第一个
+        console.log('[NotePad] 无当前ID，选中第一个')
+        selectNote(noteList.value[0])
     }
-}
-
-
-
-
-
-// 处理关闭
-const close = () => {
-    emit('update:visible', false)
+    
+    console.log('[NotePad] initData 完成, currentRemindForce:', currentRemindForce.value)
 }
 </script>
 
-<template>
-  <!-- 遮罩层，点击关闭 -->
-  <div v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" v-show="visible" class="fixed inset-0 z-[100] bg-transparent" @click="close"></div>
-
-  <!-- 便签主体 -->
-  <transition name="note-fade">
-    <div
-        v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN"
-        v-show="visible"
-        ref="notepadRef"
-        class="fixed z-[101] w-[350px] h-[45vh] flex flex-col shadow-xl rounded-lg overflow-hidden border border-amber-200"
-        :style="{ left: x + 'px', top: y + 'px' }"
-        @click.stop
-        @dragover="handleDragOver"
-        @drop="handleDrop"
-    >
-      <!-- 头部 -->
-      <div ref="headerRef" class="h-8 bg-[#fef3c7] flex justify-between items-center px-2 border-b border-[#feebc8] select-none cursor-move shrink-0">
-         <div class="flex items-center text-amber-800 text-sm font-bold cursor-pointer hover:bg-amber-200 rounded px-1 -ml-1 transition-colors" @click="showList = !showList">
-            <SvgIcon icon="note" class="mr-1" />
-            <span class="truncate max-w-[120px]" :title="currentNote.title">
-                {{ t('notepad.title') }} <span v-if="currentNote.title && currentNote.title !== t('notepad.title')">- {{ currentNote.title }}</span>
-            </span>
-            <SvgIconOnline icon="mdi:chevron-down" class="ml-1 text-xs opacity-60" />
-         </div>
-         
-         <div class="flex items-center gap-1">
-             <!-- New Note Button -->
-             <div class="hover:bg-amber-200 rounded p-0.5 cursor-pointer text-amber-900" title="New Note" @click="createNew">
-                <SvgIconOnline icon="mdi:plus" />
-             </div>
-             <!-- Upload Button -->
-             <div class="hover:bg-amber-200 rounded p-0.5 cursor-pointer text-amber-900" title="Upload" @click="triggerUpload">
-                <SvgIconOnline icon="mdi:folder-open-outline" />
-             </div>
-             <!-- Close Button -->
-             <div class="hover:bg-amber-200 rounded p-0.5 cursor-pointer text-amber-900" @click="close">
-                <SvgIconOnline icon="mdi:close" />
-             </div>
-         </div>
-      </div>
-      
-      <!-- Hidden Input -->
-      <input ref="fileInputRef" type="file" multiple style="display: none" @change="handleFileSelect" />
-
-      <!-- 编辑区 & 列表区 -->
-      <div class="flex-1 bg-[#fffbeb] relative overflow-hidden flex flex-col">
-         
-         <!-- 内容区域容器 -->
-         <div class="flex-1 relative overflow-hidden">
-             <!-- 列表侧边栏 -->
-             <transition name="slide-fade">
-                <div v-show="showList" class="absolute inset-0 z-10 bg-[#fffbeb]/95 backdrop-blur-sm border-r border-[#feebc8] flex flex-col">
-                    <div class="p-2 space-y-1 overflow-y-auto flex-1">
-                        <div v-if="noteList.length === 0" class="text-center text-gray-400 text-xs py-4">
-                            {{ t('notepad.noData') }}
-                        </div>
-                        <div 
-                            v-for="item in noteList" 
-                            :key="item.id"
-                            class="group flex justify-between items-center p-2 rounded text-sm text-gray-700 hover:bg-amber-100 cursor-pointer transition-colors"
-                            :class="{'bg-amber-200 font-medium text-amber-900': item.id === currentNote.id}"
-                            @click="selectNote(item)"
-                        >
-                            <span class="truncate flex-1">{{ item.title || '便签' }}</span>
-                            <div class="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 text-red-500 rounded transition-all" @click.stop="deleteNote(item)">
-                                <SvgIconOnline icon="mdi:trash-can-outline" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-             </transition>
-
-             <!-- ContentEditable Div -->
-             <div
-                ref="editorRef"
-                contenteditable="true"
-                class="w-full h-full p-3 outline-none overflow-y-auto text-sm text-gray-800 break-words font-sans leading-relaxed"
-                :data-placeholder="t('notepad.placeholder')"
-                 @input="handleInput"
-                spellcheck="false"
-             ></div>
-         </div>
-
-         <!-- 底部工具栏 -->
-         <div class="h-9 bg-[#fef3c7] border-t border-amber-200 flex items-center px-2 gap-1 overflow-x-auto text-amber-800 shrink-0">
-             <div class="p-1 hover:bg-amber-200 rounded cursor-pointer transition-colors" @mousedown.prevent="execCommand('bold')" title="粗体">
-                <SvgIconOnline icon="mdi:format-bold" />
-             </div>
-             <div class="p-1 hover:bg-amber-200 rounded cursor-pointer transition-colors" @mousedown.prevent="execCommand('italic')" title="斜体">
-                <SvgIconOnline icon="mdi:format-italic" />
-             </div>
-             <div class="p-1 hover:bg-amber-200 rounded cursor-pointer transition-colors" @mousedown.prevent="execCommand('strikeThrough')" title="删除线">
-                <SvgIconOnline icon="mdi:format-strikethrough-variant" />
-             </div>
-             <div class="p-1 hover:bg-amber-200 rounded cursor-pointer transition-colors" @mousedown.prevent="execCommand('insertHorizontalRule')" title="分割线">
-                <SvgIconOnline icon="mdi:minus" />
-             </div>
-             <div class="w-[1px] h-4 bg-amber-300 mx-1"></div>
-             <div class="p-1 hover:bg-amber-200 rounded cursor-pointer transition-colors" @mousedown.prevent="execCommand('formatBlock', 'H1')" title="标题1">
-                <SvgIconOnline icon="mdi:format-header-1" />
-             </div>
-             <div class="p-1 hover:bg-amber-200 rounded cursor-pointer transition-colors" @mousedown.prevent="execCommand('formatBlock', 'H2')" title="标题2">
-                <SvgIconOnline icon="mdi:format-header-2" />
-             </div>
-             <div class="w-[1px] h-4 bg-amber-300 mx-1"></div>
-             <div class="p-1 hover:bg-amber-200 rounded cursor-pointer transition-colors" @mousedown.prevent="execCommand('insertUnorderedList')" title="无序列表">
-                <SvgIconOnline icon="mdi:format-list-bulleted" />
-             </div>
-             <div class="p-1 hover:bg-amber-200 rounded cursor-pointer transition-colors" @mousedown.prevent="execCommand('insertOrderedList')" title="有序列表">
-                <SvgIconOnline icon="mdi:format-list-numbered" />
-             </div>
-             <div class="p-1 hover:bg-amber-200 rounded cursor-pointer transition-colors" @mousedown.prevent="execCommand('formatBlock', 'PRE')" title="代码块">
-                <SvgIconOnline icon="mdi:code-tags" />
-             </div>
-             <div class="w-[1px] h-4 bg-amber-300 mx-1"></div>
-             <div class="p-1 hover:bg-amber-200 rounded cursor-pointer transition-colors" @mousedown.prevent="execCommand('removeFormat')" title="清除格式">
-                <SvgIconOnline icon="mdi:format-clear" />
-             </div>
-         </div>
-      </div>
-    </div>
-  </transition>
-</template>
-
-<style scoped>
-.note-fade-enter-active,
-.note-fade-leave-active {
-  transition: all 0.2s ease;
+<style scoped lang="less">
+// 确保 Naive UI Dialog 关闭按钮显示
+:global(.n-dialog__close) {
+  display: flex !important;
 }
 
-.note-fade-enter-from,
-.note-fade-leave-to {
+:global(.n-dialog .n-base-icon) {
+  color: #666 !important;
+}
+
+.notepad-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notepad-container {
+  position: absolute;
+  width: 1000px;
+  height: 600px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  display: flex;
+  overflow: hidden;
+}
+
+// 左侧列表
+.notepad-sidebar {
+  width: 280px;
+  background: #f5f5f7;
+  border-right: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.sidebar-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin: 0;
+}
+
+.action-icon {
+  cursor: pointer;
+  font-size: 20px;
+  color: #86868b;
+  transition: color 0.2s;
+  
+  &:hover {
+    color: #007aff;
+  }
+}
+
+.search-box {
+  padding: 12px 16px;
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  left: 28px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #86868b;
+  font-size: 18px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 8px 12px 8px 36px;
+  border: none;
+  border-radius: 8px;
+  background: #e8e8ed;
+  font-size: 14px;
+  outline: none;
+  
+  &::placeholder {
+    color: #86868b;
+  }
+}
+
+.note-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.note-item {
+  padding: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-bottom: 4px;
+  
+  &:hover {
+    background: #e8e8ed;
+  }
+  
+  &.active {
+    background: #d1d1d6;
+  }
+}
+
+.note-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  gap: 8px;
+}
+
+.note-item-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1d1d1f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.remind-icon {
+  color: #86868b;
+  font-size: 16px;
+  flex-shrink: 0;
+  transition: color 0.2s;
+  
+  &.active {
+    color: #007aff;
+  }
+}
+
+.delete-icon {
+  color: #86868b;
+  font-size: 16px;
+  cursor: pointer;
+  transition: color 0.2s;
+  flex-shrink: 0;
+  
+  &:hover {
+    color: #ff3b30;
+  }
+}
+
+.note-item-time {
+  font-size: 12px;
+  color: #86868b;
+}
+
+.sidebar-footer {
+  padding: 16px;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: center;
+}
+
+.new-note-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #007aff;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s, box-shadow 0.2s;
+  
+  &:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+  }
+}
+
+// 右侧编辑区
+.notepad-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.editor-header {
+  padding: 16px;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.editor-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin: 0;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.editor-content {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  outline: none;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #1d1d1f;
+  
+  &:empty:before {
+    content: attr(placeholder);
+    color: #86868b;
+  }
+}
+
+.editor-footer {
+  padding: 12px 16px;
+  border-top: 1px solid #e0e0e0;
+  background: #f5f5f7;
+}
+
+.footer-text {
+  font-size: 12px;
+  color: #86868b;
+}
+
+// 提醒相关
+.remind-float-btn {
+  position: absolute;
+  bottom: 60px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  &:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
+  
+  &.active {
+    background: #007aff;
+    color: white;
+  }
+}
+
+.remind-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  background: #ff3b30;
+  border-radius: 50%;
+  border: 2px solid white;
+}
+
+.remind-picker {
+  position: absolute;
+  bottom: 60px;
+  left: 16px;
+  right: 16px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  padding: 16px;
+  z-index: 10;
+}
+
+.remind-picker-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin-bottom: 12px;
+}
+
+.remind-picker-info {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #86868b;
+}
+
+.remind-repeat-section {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.repeat-label {
+  font-size: 14px;
+  color: #1d1d1f;
+  font-weight: 500;
+}
+
+.repeat-select {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: #f5f5f7;
+  font-size: 14px;
+  color: #1d1d1f;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  
+  &:hover {
+    border-color: #007aff;
+  }
+  
+  &:focus {
+    border-color: #007aff;
+    box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.1);
+  }
+}
+
+.repeat-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: #007aff;
+  color: white;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.advance-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  background: #ff9500;
+  color: white;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+// 提前提醒样式
+.remind-advance-section {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 149, 0, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 149, 0, 0.2);
+  transition: all 0.3s;
+}
+
+.advance-label {
+  font-size: 14px;
+  color: #1d1d1f;
+  font-weight: 500;
+}
+
+.advance-select {
+  padding: 8px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: #f5f5f7;
+  font-size: 14px;
+  color: #1d1d1f;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  
+  &:hover {
+    border-color: #ff9500;
+  }
+  
+  &:focus {
+    border-color: #ff9500;
+    box-shadow: 0 0 0 2px rgba(255, 149, 0, 0.1);
+  }
+}
+
+.advance-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #ff9500;
+  font-weight: 500;
+  padding: 6px 8px;
+  background: rgba(255, 149, 0, 0.1);
+  border-radius: 6px;
+}
+
+// 强制提醒样式
+.remind-force-section {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 59, 48, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 59, 48, 0.2);
+  transition: all 0.3s;
+  
+  &:has(.force-checkbox:checked) {
+    background: rgba(255, 59, 48, 0.1);
+    border-color: rgba(255, 59, 48, 0.5);
+  }
+}
+
+.force-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #ff3b30;
+  font-weight: 500;
+  user-select: none;
+  
+  &:hover {
+    opacity: 0.8;
+  }
+}
+
+.force-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #ff3b30;
+}
+
+.remind-picker-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.confirm-btn {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.confirm-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.confirm-btn:active {
+  transform: translateY(0);
+}
+
+// 动画
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s;
+}
+
+.fade-enter-from,
+.fade-leave-to {
   opacity: 0;
-  transform: translateY(-10px) scale(0.95);
 }
 
-.slide-fade-enter-active,
-.slide-fade-leave-active {
-  transition: all 0.2s ease;
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.3s ease;
 }
-.slide-fade-enter-from,
-.slide-fade-leave-to {
+
+.slide-up-enter-from,
+.slide-up-leave-to {
   opacity: 0;
-  transform: translateX(-10px);
-}
-
-:deep(.file-attachment) {
-    display: inline-flex;
-    align-items: center;
-    background-color: #fff7ed;
-    border: 1px solid #fed7aa;
-    border-radius: 4px;
-    padding: 0 4px;
-    margin: 0 2px;
-    font-size: 0.85em;
-    color: #c2410c;
-    cursor: pointer;
-    user-select: none;
-    transition: all 0.2s;
-    text-decoration: none;
-}
-
-:deep(.file-attachment:hover) {
-    background-color: #ffedd5;
-    border-color: #fdba74;
-}
-
-:deep(.note-image) {
-    max-width: 100%;
-    max-height: 150px;
-    border-radius: 4px;
-    margin: 4px 0;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    display: block;
-    cursor: default;
-}
-
-/* 编辑器内部样式 */
-:deep(h1) {
-    font-size: 1.5em;
-    font-weight: bold;
-    margin: 0.5em 0 0.25em 0;
-    line-height: 1.3;
-    color: #1f2937;
-}
-:deep(h2) {
-    font-size: 1.25em;
-    font-weight: bold;
-    margin: 0.5em 0 0.25em 0;
-    line-height: 1.4;
-    color: #374151;
-    border-bottom: 1px solid #e5e7eb;
-}
-:deep(ul) {
-    list-style-type: disc;
-    padding-left: 1.5em;
-    margin: 0.5em 0;
-}
-:deep(ol) {
-    list-style-type: decimal;
-    padding-left: 1.5em;
-    margin: 0.5em 0;
-}
-:deep(li) {
-    margin: 0.2em 0;
-}
-:deep(pre) {
-    background-color: #1e293b; /* slate-800 */
-    color: #e2e8f0; /* slate-200 */
-    padding: 0.75em;
-    border-radius: 6px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    font-size: 0.9em;
-    line-height: 1.5;
-    margin: 0.5em 0;
-    white-space: pre-wrap;
-    overflow-x: auto;
-}
-:deep(blockquote) {
-    border-left: 4px solid #cbd5e1;
-    padding-left: 1em;
-    margin: 0.5em 0;
-    color: #64748b;
-    font-style: italic;
-}
-:deep(b), :deep(strong) {
-    font-weight: bold;
-}
-:deep(i), :deep(em) {
-    font-style: italic;
-}
-:deep(s), :deep(strike) {
-    text-decoration: line-through;
-}
-:deep(hr) {
-    border: 0;
-    border-top: 1px solid #78350f; /* Amber-900 like */
-    opacity: 0.2;
-    margin: 1em 0;
-}
-
-/* 占位符效果 */
-div[contenteditable]:empty::before {
-  content: attr(data-placeholder);
-  color: #9ca3af;
-  pointer-events: none;
-  font-style: italic;
+  transform: translateY(10px);
 }
 </style>
