@@ -352,6 +352,11 @@ func (a *Notepad) Acknowledge(c *gin.Context) {
 		now := time.Now()
 		nextTime := checker.CalculateNextRemindTime(remindTime, notepad.RemindRepeat, now)
 		
+		// 如果有提前天数，需要减去提前天数得到实际触发时间
+		if notepad.RemindAdvanceDays > 0 {
+			nextTime = nextTime.AddDate(0, 0, -notepad.RemindAdvanceDays)
+		}
+		
 		// 更新数据库
 		global.Db.Model(&notepad).Updates(map[string]interface{}{
 			"remind_time": nextTime.Format("2006-01-02T15:04:05"),
