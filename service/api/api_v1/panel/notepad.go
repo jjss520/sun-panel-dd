@@ -64,10 +64,10 @@ func (a *Notepad) Save(c *gin.Context) {
 		Title             string `json:"title"`
 		Content           string `json:"content"`
 		RemindTime        string `json:"remindTime,omitempty"`
-		RemindStatus      int    `json:"remindStatus"`
+		RemindStatus      *int   `json:"remindStatus,omitempty"`
 		RemindRepeat      string `json:"remindRepeat,omitempty"`
 		RemindForce       int    `json:"remindForce"`
-		RemindAdvanceDays int    `json:"remindAdvanceDays"`
+		RemindAdvanceDays *int   `json:"remindAdvanceDays,omitempty"`
 	}
 	var req Req
 	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
@@ -125,14 +125,14 @@ func (a *Notepad) Save(c *gin.Context) {
 				}
 				
 				// 如果有提前天数，减去提前天数
-				if req.RemindAdvanceDays > 0 {
-					actualTime = actualTime.AddDate(0, 0, -req.RemindAdvanceDays)
+				if req.RemindAdvanceDays != nil && *req.RemindAdvanceDays > 0 {
+					actualTime = actualTime.AddDate(0, 0, -*req.RemindAdvanceDays)
 				}
 				
 				// 存储实际触发时间
 				notepad.RemindTime = actualTime.Format("2006-01-02T15:04:05")
 				log.Printf("[提醒保存] ID=%d, 原始时间=%s, 实际触发=%s, 重复=%s, 提前=%d天", 
-					notepad.ID, notepad.RemindBaseTime, notepad.RemindTime, req.RemindRepeat, req.RemindAdvanceDays)
+					notepad.ID, notepad.RemindBaseTime, notepad.RemindTime, req.RemindRepeat, *req.RemindAdvanceDays)
 			} else {
 				notepad.RemindTime = req.RemindTime
 				notepad.RemindBaseTime = req.RemindTime
@@ -142,9 +142,16 @@ func (a *Notepad) Save(c *gin.Context) {
 			notepad.RemindBaseTime = req.RemindTime
 		}
 		
-		notepad.RemindStatus = req.RemindStatus
-		notepad.RemindRepeat = req.RemindRepeat
-		notepad.RemindAdvanceDays = req.RemindAdvanceDays
+		// 只有当字段不为 nil 时才更新，避免覆盖数据库中的值
+		if req.RemindStatus != nil {
+			notepad.RemindStatus = *req.RemindStatus
+		}
+		if req.RemindRepeat != "" {
+			notepad.RemindRepeat = req.RemindRepeat
+		}
+		if req.RemindAdvanceDays != nil {
+			notepad.RemindAdvanceDays = *req.RemindAdvanceDays
+		}
 		if err := global.Db.Save(&notepad).Error; err != nil {
 			apiReturn.Error(c, "Update Failed")
 			return
@@ -185,13 +192,13 @@ func (a *Notepad) Save(c *gin.Context) {
 					}
 				}
 				
-				if req.RemindAdvanceDays > 0 {
-					actualTime = actualTime.AddDate(0, 0, -req.RemindAdvanceDays)
+				if req.RemindAdvanceDays != nil && *req.RemindAdvanceDays > 0 {
+					actualTime = actualTime.AddDate(0, 0, -*req.RemindAdvanceDays)
 				}
 				
 				actualRemindTime = actualTime.Format("2006-01-02T15:04:05")
 				log.Printf("[提醒保存] 新建, 原始时间=%s, 实际触发=%s, 重复=%s, 提前=%d天", 
-					baseRemindTime, actualRemindTime, req.RemindRepeat, req.RemindAdvanceDays)
+					baseRemindTime, actualRemindTime, req.RemindRepeat, *req.RemindAdvanceDays)
 			}
 		}
 		
@@ -201,9 +208,16 @@ func (a *Notepad) Save(c *gin.Context) {
 			Content:           req.Content,
 			RemindBaseTime:    baseRemindTime,
 			RemindTime:        actualRemindTime,
-			RemindStatus:      req.RemindStatus,
+			RemindStatus:      0, // 默认值
 			RemindRepeat:      req.RemindRepeat,
-			RemindAdvanceDays: req.RemindAdvanceDays,
+			RemindAdvanceDays: 0, // 默认值
+		}
+		// 如果前端传了这些字段，才使用传入的值
+		if req.RemindStatus != nil {
+			notepad.RemindStatus = *req.RemindStatus
+		}
+		if req.RemindAdvanceDays != nil {
+			notepad.RemindAdvanceDays = *req.RemindAdvanceDays
 		}
 		if err := global.Db.Create(&notepad).Error; err != nil {
 			apiReturn.Error(c, "Create Failed")

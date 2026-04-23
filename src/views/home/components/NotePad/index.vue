@@ -342,7 +342,7 @@ const handlePaste = (e: ClipboardEvent) => {
     document.execCommand('insertText', false, text)
 }
 
-// 核心保存逻辑
+// 核心保存逻辑（只保存便签内容，不保存提醒设置）
 const handleSave = async () => {
     if (editorRef.value) {
         try {
@@ -351,14 +351,11 @@ const handleSave = async () => {
             const title = generateTitle(text)
             const saveId = currentNote.value.id || 0
             
+            // 只保存标题和内容，不传递提醒相关字段，避免覆盖数据库中的提醒设置
             const res = await saveNotepadContent({ 
                 id: saveId,
                 title: title,
-                content: content,
-                remindTime: currentNote.value.remindTime || null,
-                remindStatus: currentNote.value.remindStatus || 0,
-                remindRepeat: currentNote.value.remindRepeat || 'none',
-                remindAdvanceDays: currentNote.value.remindAdvanceDays || 0
+                content: content
             })
             
             if (res.code === 0) {
