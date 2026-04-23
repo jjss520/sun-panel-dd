@@ -90,6 +90,49 @@ func (rc *RemindChecker) checkDueReminds() {
 
 	now := time.Now().Add(2 * time.Second)
 	log.Printf("[提醒检查器] 检查 %d 个便签，当前时间: %s", len(notepads), now.Format("2006-01-02 15:04:05"))
+	
+	// 打印所有查询到的便签信息（调试用）
+	for _, note := range notepads {
+		// 计算下次提醒时间
+		nextRemindTime := "无"
+		if note.RemindTime != "" {
+			if t, err := time.ParseInLocation("2006-01-02T15:04:05", note.RemindTime, time.Local); err == nil {
+				if note.RemindRepeat != "" && note.RemindRepeat != "none" {
+					// 重复提醒：计算下一周期
+					nextTime := rc.CalculateNextRemindTime(t, note.RemindRepeat, now)
+					nextRemindTime = nextTime.Format("2006-01-02 15:04:05")
+				} else {
+					// 一次性提醒
+					nextRemindTime = t.Format("2006-01-02 15:04:05") + " (一次性)"
+				}
+			}
+		}
+		
+		// 提醒方式描述
+		remindMode := "普通"
+		if note.RemindForce == 1 {
+			remindMode = "强制(每小时)"
+		}
+		if note.RemindAdvanceDays > 0 {
+			remindMode += fmt.Sprintf(" [提前%d天]", note.RemindAdvanceDays)
+		}
+		
+		repeatText := "不重复"
+		if note.RemindRepeat != "" && note.RemindRepeat != "none" {
+			repeatMap := map[string]string{
+				"daily": "每天",
+				"weekly": "每周",
+				"monthly": "每月",
+				"yearly": "每年",
+			}
+			if text, ok := repeatMap[note.RemindRepeat]; ok {
+				repeatText = text
+			}
+		}
+		
+		log.Printf("[提醒检查器]   - ID=%d, Title=%s, RemindTime=%s, Status=%d, UserID=%d, 重复=%s, 下次=%s, 方式=%s", 
+			note.ID, note.Title, note.RemindTime, note.RemindStatus, note.UserID, repeatText, nextRemindTime, remindMode)
+	}
 
 	for _, note := range notepads {
 		if note.RemindTime == "" {

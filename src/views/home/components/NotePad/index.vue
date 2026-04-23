@@ -165,11 +165,13 @@
                         {{ opt.label }}
                       </option>
                     </select>
-                    <div v-if="currentAdvanceDays > 0 && currentNote.remindTime" class="advance-hint">
-                      💡 下次实际提醒：{{ nextActualRemindTime }}
-                    </div>
                   </div>
                 </transition>
+                
+                <!-- 实际提醒时间提示（始终显示） -->
+                <div v-if="currentNote.remindTime" class="actual-remind-hint">
+                  💡 下次实际提醒：{{ nextActualRemindTime }}
+                </div>
                 
                 <div class="remind-picker-info">
                   <div v-if="currentNote.remindStatus === 0 && currentNote.remindTime">
@@ -644,7 +646,7 @@ const advanceDaysOptions = computed(() => {
 
 // 下次实际提醒时间显示
 const nextActualRemindTime = computed(() => {
-    if (!currentNote.value.remindTime || currentAdvanceDays.value === 0) {
+    if (!currentNote.value.remindTime) {
         return ''
     }
     
@@ -653,8 +655,26 @@ const nextActualRemindTime = computed(() => {
     const now = new Date()
     let nextBaseTime = new Date(baseTime)
     
-    // 如果基准时间已过，计算下一个周期的基准时间
-    if (nextBaseTime <= now && currentNote.value.remindRepeat && currentNote.value.remindRepeat !== 'none') {
+    // 如果设置了重复类型，计算下一个周期的基准时间
+    // 对于重复提醒，总是计算到下一个周期（即使原始日期是未来）
+    if (currentNote.value.remindRepeat && currentNote.value.remindRepeat !== 'none') {
+        // 先加一个周期，然后再判断是否需要继续往后推
+        switch (currentNote.value.remindRepeat) {
+            case 'daily':
+                nextBaseTime.setDate(nextBaseTime.getDate() + 1)
+                break
+            case 'weekly':
+                nextBaseTime.setDate(nextBaseTime.getDate() + 7)
+                break
+            case 'monthly':
+                nextBaseTime.setMonth(nextBaseTime.getMonth() + 1)
+                break
+            case 'yearly':
+                nextBaseTime.setFullYear(nextBaseTime.getFullYear() + 1)
+                break
+        }
+        
+        // 如果加了周期后还是小于等于现在，继续循环直到找到未来的时间
         while (nextBaseTime <= now) {
             switch (currentNote.value.remindRepeat) {
                 case 'daily':
@@ -675,7 +695,9 @@ const nextActualRemindTime = computed(() => {
     
     // 实际提醒时间 = 下一次基准时间 - 提前天数
     const actualTime = new Date(nextBaseTime)
-    actualTime.setDate(actualTime.getDate() - currentAdvanceDays.value)
+    if (currentAdvanceDays.value > 0) {
+        actualTime.setDate(actualTime.getDate() - currentAdvanceDays.value)
+    }
     
     console.log('[NotePad] 计算实际提醒时间:', {
         baseTime: formatLocalDateTime(baseTime),
