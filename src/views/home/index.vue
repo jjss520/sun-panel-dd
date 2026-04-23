@@ -267,7 +267,7 @@ const showRemindNotification = (note: any) => {
   }
 }
 
-// 关闭通知（用户点击“知道了”）
+// 关闭通知（用户点击“知道了”）→ 确认提醒
 const closeNotification = async (id: number) => {
   const index = remindNotifications.value.findIndex(n => n.id === id)
   if (index > -1) {
@@ -280,7 +280,7 @@ const closeNotification = async (id: number) => {
       await acknowledgeReminder({ id: notification.noteId })
       console.log('[提醒确认] 成功:', notification.noteId)
       
-      // 2. ✅ 刷新列表：确保桌面图标、便签列表的状态实时同步为“已处理”
+      // 2. ✅ 刷新列表：确保桌面图标、便签列表的状态实时同步为"已处理"
       handleRefreshData()
       
     } catch (error) {
@@ -288,6 +288,23 @@ const closeNotification = async (id: number) => {
     }
     
     // 3. UI 隐藏动画
+    notification.visible = false
+    setTimeout(() => {
+      remindNotifications.value = remindNotifications.value.filter(n => n.id !== id)
+    }, 300)
+  }
+}
+
+// 关闭通知窗口（用户点击 X）→ 不确认，只是关闭窗口
+const dismissNotification = (id: number) => {
+  const index = remindNotifications.value.findIndex(n => n.id === id)
+  if (index > -1) {
+    const notification = remindNotifications.value[index]
+    
+    // 只关闭 UI，不调用确认 API，保持状态为 1（待确认）
+    console.log('[提醒窗口] 仅关闭窗口，未确认:', notification.noteId)
+    
+    // UI 隐藏动画
     notification.visible = false
     setTimeout(() => {
       remindNotifications.value = remindNotifications.value.filter(n => n.id !== id)
@@ -1784,7 +1801,7 @@ function getNetworkModeButtonIcon() {
               <SvgIcon icon="boxicons--bell-ring" />
             </div>
             <div class="notification-title">提醒</div>
-            <button class="notification-close" @click="closeNotification(notification.id)">
+            <button class="notification-close" @click="dismissNotification(notification.id)">
               <SvgIcon icon="material-symbols--close" />
             </button>
           </div>

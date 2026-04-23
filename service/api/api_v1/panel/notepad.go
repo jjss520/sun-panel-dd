@@ -84,10 +84,66 @@ func (a *Notepad) Save(c *gin.Context) {
 		}
 		notepad.Title = req.Title
 		notepad.Content = req.Content
-		notepad.RemindTime = req.RemindTime
+		
+		// 计算实际触发时间
+		if req.RemindTime != "" && req.RemindTime != "none" {
+			// 解析用户选择的时间（原始时间）
+			selectedTime, err := time.ParseInLocation("2006-01-02T15:04:05", req.RemindTime, time.Local)
+			if err == nil {
+				// 保存原始时间
+				notepad.RemindBaseTime = req.RemindTime
+				
+				// 如果有重复类型，计算下一个周期
+				actualTime := selectedTime
+				if req.RemindRepeat != "" && req.RemindRepeat != "none" {
+					// 先加一个周期
+					switch req.RemindRepeat {
+					case "daily":
+						actualTime = actualTime.AddDate(0, 0, 1)
+					case "weekly":
+						actualTime = actualTime.AddDate(0, 0, 7)
+					case "monthly":
+						actualTime = actualTime.AddDate(0, 1, 0)
+					case "yearly":
+						actualTime = actualTime.AddDate(1, 0, 0)
+					}
+					
+					// 如果加了周期后还是小于等于现在，继续循环直到找到未来的时间
+					now := time.Now()
+					for actualTime.Before(now) || actualTime.Equal(now) {
+						switch req.RemindRepeat {
+						case "daily":
+							actualTime = actualTime.AddDate(0, 0, 1)
+						case "weekly":
+							actualTime = actualTime.AddDate(0, 0, 7)
+						case "monthly":
+							actualTime = actualTime.AddDate(0, 1, 0)
+						case "yearly":
+							actualTime = actualTime.AddDate(1, 0, 0)
+						}
+					}
+				}
+				
+				// 如果有提前天数，减去提前天数
+				if req.RemindAdvanceDays > 0 {
+					actualTime = actualTime.AddDate(0, 0, -req.RemindAdvanceDays)
+				}
+				
+				// 存储实际触发时间
+				notepad.RemindTime = actualTime.Format("2006-01-02T15:04:05")
+				log.Printf("[提醒保存] ID=%d, 原始时间=%s, 实际触发=%s, 重复=%s, 提前=%d天", 
+					notepad.ID, notepad.RemindBaseTime, notepad.RemindTime, req.RemindRepeat, req.RemindAdvanceDays)
+			} else {
+				notepad.RemindTime = req.RemindTime
+				notepad.RemindBaseTime = req.RemindTime
+			}
+		} else {
+			notepad.RemindTime = req.RemindTime
+			notepad.RemindBaseTime = req.RemindTime
+		}
+		
 		notepad.RemindStatus = req.RemindStatus
 		notepad.RemindRepeat = req.RemindRepeat
-		notepad.RemindForce = req.RemindForce
 		notepad.RemindAdvanceDays = req.RemindAdvanceDays
 		if err := global.Db.Save(&notepad).Error; err != nil {
 			apiReturn.Error(c, "Update Failed")
@@ -95,14 +151,58 @@ func (a *Notepad) Save(c *gin.Context) {
 		}
 	} else {
 		// Create
+		// 计算实际触发时间（逻辑同上）
+		actualRemindTime := req.RemindTime
+		baseRemindTime := req.RemindTime // 保存原始时间
+		if req.RemindTime != "" && req.RemindTime != "none" {
+			selectedTime, err := time.ParseInLocation("2006-01-02T15:04:05", req.RemindTime, time.Local)
+			if err == nil {
+				actualTime := selectedTime
+				if req.RemindRepeat != "" && req.RemindRepeat != "none" {
+					switch req.RemindRepeat {
+					case "daily":
+						actualTime = actualTime.AddDate(0, 0, 1)
+					case "weekly":
+						actualTime = actualTime.AddDate(0, 0, 7)
+					case "monthly":
+						actualTime = actualTime.AddDate(0, 1, 0)
+					case "yearly":
+						actualTime = actualTime.AddDate(1, 0, 0)
+					}
+					
+					now := time.Now()
+					for actualTime.Before(now) || actualTime.Equal(now) {
+						switch req.RemindRepeat {
+						case "daily":
+							actualTime = actualTime.AddDate(0, 0, 1)
+						case "weekly":
+							actualTime = actualTime.AddDate(0, 0, 7)
+						case "monthly":
+							actualTime = actualTime.AddDate(0, 1, 0)
+						case "yearly":
+							actualTime = actualTime.AddDate(1, 0, 0)
+						}
+					}
+				}
+				
+				if req.RemindAdvanceDays > 0 {
+					actualTime = actualTime.AddDate(0, 0, -req.RemindAdvanceDays)
+				}
+				
+				actualRemindTime = actualTime.Format("2006-01-02T15:04:05")
+				log.Printf("[提醒保存] 新建, 原始时间=%s, 实际触发=%s, 重复=%s, 提前=%d天", 
+					baseRemindTime, actualRemindTime, req.RemindRepeat, req.RemindAdvanceDays)
+			}
+		}
+		
 		notepad = models.Notepad{
 			UserID:            userInfo.ID,
 			Title:             req.Title,
 			Content:           req.Content,
-			RemindTime:        req.RemindTime,
+			RemindBaseTime:    baseRemindTime,
+			RemindTime:        actualRemindTime,
 			RemindStatus:      req.RemindStatus,
 			RemindRepeat:      req.RemindRepeat,
-			RemindForce:       req.RemindForce,
 			RemindAdvanceDays: req.RemindAdvanceDays,
 		}
 		if err := global.Db.Create(&notepad).Error; err != nil {

@@ -209,7 +209,6 @@ async function exportNotepads(): Promise<import('@/utils/jsonImportExport').Note
         remindTime: item.remindTime || null,
         remindStatus: item.remindStatus || 0,
         remindRepeat: item.remindRepeat || 'none',
-        remindForce: item.remindForce || 0,
         remindAdvanceDays: item.remindAdvanceDays || 0,
       }))
     }

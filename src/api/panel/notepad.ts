@@ -5,10 +5,10 @@ export interface NotepadInfo {
     userId: number
     title: string
     content: string
-    remindTime?: string  // 提醒时间 ISO 格式
+    remindBaseTime?: string  // 提醒基准时间（用户原始选择的时间）
+    remindTime?: string  // 提醒时间（实际触发时间，已计算周期和提前天数）
     remindStatus?: number  // 0=等待触发, 1=待确认, 2=已结束
     remindRepeat?: string  // 重复类型: none/daily/weekly/monthly/yearly
-    remindForce?: number  // 强制提醒: 0=关闭, 1=开启
     remindAdvanceDays?: number  // 提前提醒天数（0=不提前）
     createdAt: string
     updatedAt: string

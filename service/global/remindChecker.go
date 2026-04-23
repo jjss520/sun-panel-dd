@@ -93,26 +93,21 @@ func (rc *RemindChecker) checkDueReminds() {
 	
 	// 打印所有查询到的便签信息（调试用）
 	for _, note := range notepads {
-		// 计算下次提醒时间
-		nextRemindTime := "无"
+		// 显示原始时间和实际触发时间
+		baseTimeStr := "无"
+		actualRemindTime := "无"
+		if note.RemindBaseTime != "" {
+			baseTimeStr = note.RemindBaseTime
+		}
 		if note.RemindTime != "" {
-			if t, err := time.ParseInLocation("2006-01-02T15:04:05", note.RemindTime, time.Local); err == nil {
-				if note.RemindRepeat != "" && note.RemindRepeat != "none" {
-					// 重复提醒：计算下一周期
-					nextTime := rc.CalculateNextRemindTime(t, note.RemindRepeat, now)
-					nextRemindTime = nextTime.Format("2006-01-02 15:04:05")
-				} else {
-					// 一次性提醒
-					nextRemindTime = t.Format("2006-01-02 15:04:05") + " (一次性)"
-				}
+			actualRemindTime = note.RemindTime
+			if note.RemindRepeat == "" || note.RemindRepeat == "none" {
+				actualRemindTime += " (一次性)"
 			}
 		}
 		
 		// 提醒方式描述
 		remindMode := "普通"
-		if note.RemindForce == 1 {
-			remindMode = "强制(每小时)"
-		}
 		if note.RemindAdvanceDays > 0 {
 			remindMode += fmt.Sprintf(" [提前%d天]", note.RemindAdvanceDays)
 		}
@@ -130,8 +125,8 @@ func (rc *RemindChecker) checkDueReminds() {
 			}
 		}
 		
-		log.Printf("[提醒检查器]   - ID=%d, Title=%s, RemindTime=%s, Status=%d, UserID=%d, 重复=%s, 下次=%s, 方式=%s", 
-			note.ID, note.Title, note.RemindTime, note.RemindStatus, note.UserID, repeatText, nextRemindTime, remindMode)
+		log.Printf("[提醒检查器]   - ID=%d, Title=%s, 原始时间=%s, 实际触发=%s, Status=%d, UserID=%d, 重复=%s, 方式=%s", 
+			note.ID, note.Title, baseTimeStr, actualRemindTime, note.RemindStatus, note.UserID, repeatText, remindMode)
 	}
 
 	for _, note := range notepads {
@@ -189,7 +184,6 @@ func (rc *RemindChecker) checkDueReminds() {
 					"title":             note.Title,
 					"content":           note.Content,
 					"remindTime":        note.RemindTime,
-					"remindForce":       note.RemindForce,
 					"remindRepeat":      note.RemindRepeat,
 					"remindAdvanceDays": note.RemindAdvanceDays,
 				}
@@ -203,37 +197,22 @@ func (rc *RemindChecker) checkDueReminds() {
 			
 		} else if note.RemindStatus == 1 {
 			// === 状态 1：待确认 ===
+			// 持续推送，直到用户确认（强制提醒）
+			log.Printf("[提醒检查器] 强制提醒轮询: UserID=%d, Title=%s", 
+				note.UserID, note.Title)
 			
-			// 只有开启强制提醒的才需要轮询
-			if note.RemindForce == 1 {
-				// 检查距离上次触发是否过了 1 小时
-				// 这里通过比较 remindTime 和当前时间的差值来判断
-				// 注意：remindTime 在状态 1 时不会改变，所以可以用作参考
-				timeDiff := now.Sub(remindTime)
-				
-				// 简化逻辑：每次检查都推送（因为每分钟检查一次，1小时=60次检查）
-				// 更好的做法是记录上次推送时间，但为了简化，我们使用一个近似判断
-				// 如果 remindTime 是过去的时间，且开启了强制提醒，就推送
-				if timeDiff >= 1*time.Hour {
-					log.Printf("[提醒检查器] 强制提醒轮询: UserID=%d, Title=%s, 已过时间=%v", 
-						note.UserID, note.Title, timeDiff)
-					
-					// 构建提醒数据
-					remindData := map[string]interface{}{
-						"id":                note.ID,
-						"title":             note.Title,
-						"content":           note.Content,
-						"remindTime":        note.RemindTime,
-						"remindForce":       note.RemindForce,
-						"remindRepeat":      note.RemindRepeat,
-						"remindAdvanceDays": note.RemindAdvanceDays,
-					}
-					
-					// 推送（不改变状态，保持为 1）
-					rc.pushToUser(note.UserID, remindData)
-				}
+			// 构建提醒数据
+			remindData := map[string]interface{}{
+				"id":                note.ID,
+				"title":             note.Title,
+				"content":           note.Content,
+				"remindTime":        note.RemindTime,
+				"remindRepeat":      note.RemindRepeat,
+				"remindAdvanceDays": note.RemindAdvanceDays,
 			}
-			// 如果 remindForce = 0，什么都不做，静静等待用户确认
+			
+			// 推送（不改变状态，保持为 1）
+			rc.pushToUser(note.UserID, remindData)
 		}
 	}
 }
