@@ -108,7 +108,12 @@
             <!-- 提醒时间选择器 -->
             <transition name="slide-up">
               <div v-if="showRemindPicker" class="remind-picker">
-                <div class="remind-picker-header">选择提醒时间：</div>
+                <div class="remind-picker-header">
+                  <span>选择提醒时间：</span>
+                  <button class="close-picker-btn" @click="handleCloseRemindPicker" title="关闭">
+                    <SvgIcon icon="material-symbols--close" />
+                  </button>
+                </div>
                 
                 <!-- 日期时间选择器 -->
                 <NDatePicker
@@ -176,8 +181,7 @@
                 <!-- 确认按钮 -->
                 <div class="remind-picker-actions">
                   <button class="confirm-btn" @click="handleConfirmRemind">
-                    <SvgIcon icon="mdi:check" />
-                    完成
+                    确认
                   </button>
                 </div>
               </div>
@@ -441,6 +445,11 @@ const downloadFile = async (url: string, filename: string) => {
 
 // 统一的时间戳变量
 const remindTimestamp = ref<number | null>(null)
+
+// 关闭提醒选择器（不保存）
+const handleCloseRemindPicker = () => {
+    showRemindPicker.value = false
+}
 
 // 点击"完成"按钮时保存所有设置
 const handleConfirmRemind = () => {
@@ -1120,10 +1129,35 @@ const initData = async () => {
 }
 
 .remind-picker-header {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1d1d1f;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 12px;
+  
+  span {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1d1d1f;
+  }
+}
+
+.close-picker-btn {
+  padding: 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #86868b;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+  
+  &:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: #1d1d1f;
+  }
 }
 
 .remind-picker-info {
@@ -1283,7 +1317,8 @@ const initData = async () => {
 }
 
 .confirm-btn {
-  padding: 8px 16px;
+  min-width: 80px;
+  padding: 8px 20px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
@@ -1293,6 +1328,7 @@ const initData = async () => {
   cursor: pointer;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   transition: all 0.2s;
   box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
