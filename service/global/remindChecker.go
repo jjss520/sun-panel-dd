@@ -126,22 +126,9 @@ func (rc *RemindChecker) checkDueReminds() {
 		if note.RemindStatus == 0 {
 			// === 状态 0：等待触发 ===
 			
-			// 计算实际应该触发的时间
+			// 数据库中的 remindTime 已经是实际触发时间（包含提前天数的计算）
+			// 直接使用该时间进行判断，不需要再次处理提前天数
 			actualRemindTime := remindTime
-			
-			// 对于重复提醒，如果基准时间已过，需要立即触发（而不是跳到下一周期）
-			// 下一周期的计算在用户确认后由 API 处理
-			if note.RemindRepeat != "" && note.RemindRepeat != "none" {
-				if !remindTime.After(now) {
-					// 基准时间已过，直接使用基准时间触发（让用户确认后再计算下一周期）
-					actualRemindTime = remindTime
-				}
-			}
-			
-			// 处理提前天数
-			if note.RemindAdvanceDays > 0 {
-				actualRemindTime = actualRemindTime.AddDate(0, 0, -note.RemindAdvanceDays)
-			}
 			
 			// 判断是否到达提醒时间
 			// 将双方时间都截断到“分钟”（抹除秒数带来的误差）
