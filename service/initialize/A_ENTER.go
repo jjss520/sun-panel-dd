@@ -103,6 +103,8 @@ func InitApp() error {
 		go UpdateBookmarkIconJson()
 		// 启动 BING 壁纸每日下载任务
 		bingwallpaper.StartDailyTask()
+		// 启动提醒检查器
+		global.InitRemindChecker(global.Db)
 	}()
 
 	return nil

@@ -2,6 +2,7 @@ package panel
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"regexp"
@@ -257,4 +258,108 @@ func (a *Notepad) Upload(c *gin.Context) {
 		"name": f.Filename,
 		"type": f.Header.Get("Content-Type"),
 	})
+}
+
+// RemindStream SSE 实时推送提醒
+func (a *Notepad) RemindStream(c *gin.Context) {
+	userIdStr := c.Query("userId")
+	if userIdStr == "" {
+		c.JSON(400, gin.H{"error": "Missing userId"})
+		return
+	}
+
+	var userId uint
+	fmt.Sscanf(userIdStr, "%d", &userId)
+
+	// 获取提醒检查器
+	checker := global.GetRemindChecker()
+	if checker == nil {
+		c.JSON(500, gin.H{"error": "Remind checker not initialized"})
+		return
+	}
+
+	// 设置 SSE 响应头（必须在写入任何内容之前）
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+	c.Writer.WriteHeaderNow()
+
+	// 调用 SSE 处理器
+	checker.SSEHandler(c.Writer, c.Request)
+}
+
+// Acknowledge 确认提醒（用户点击“我知道”）
+func (a *Notepad) Acknowledge(c *gin.Context) {
+	userInfo, _ := base.GetCurrentUserInfo(c)
+	type Req struct {
+		Id uint `json:"id"`
+	}
+	var req Req
+	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
+		apiReturn.ErrorParamFomat(c, err.Error())
+		return
+	}
+
+	// 查询便签
+	var notepad models.Notepad
+	if err := global.Db.Where("user_id = ? AND id = ?", userInfo.ID, req.Id).First(&notepad).Error; err != nil {
+		apiReturn.Error(c, "Not Found")
+		return
+	}
+
+	// 检查状态是否为待确认
+	if notepad.RemindStatus != 1 {
+		apiReturn.Error(c, "Reminder is not in pending state")
+		return
+	}
+
+	// 根据重复类型处理
+	if notepad.RemindRepeat == "" || notepad.RemindRepeat == "none" {
+		// 一次性提醒：标记为已结束
+		global.Db.Model(&notepad).Update("remind_status", 2)
+		log.Printf("[提醒确认] 一次性提醒已确认: ID=%d, Title=%s", notepad.ID, notepad.Title)
+	} else {
+		// 重复提醒：计算下一个周期并重置状态
+		parseFormats := []string{
+			"2006-01-02T15:04:05",
+			"2006-01-02 15:04:05",
+		}
+		
+		var remindTime time.Time
+		parsed := false
+		for _, format := range parseFormats {
+			t, err := time.ParseInLocation(format, notepad.RemindTime, time.Local)
+			if err == nil {
+				remindTime = t
+				parsed = true
+				break
+			}
+		}
+		
+		if !parsed {
+			apiReturn.Error(c, "Invalid remind time format")
+			return
+		}
+		
+		// 计算下一个周期时间（基于当前时间，避免历史遗留欠账导致连环弹窗）
+		checker := global.GetRemindChecker()
+		if checker == nil {
+			apiReturn.Error(c, "Remind checker not initialized")
+			return
+		}
+		
+		now := time.Now()
+		nextTime := checker.CalculateNextRemindTime(remindTime, notepad.RemindRepeat, now)
+		
+		// 更新数据库
+		global.Db.Model(&notepad).Updates(map[string]interface{}{
+			"remind_time": nextTime.Format("2006-01-02T15:04:05"),
+			"remind_status": 0, // 重置为等待触发
+		})
+		
+		log.Printf("[提醒确认] 重复提醒已确认，下次提醒: ID=%d, NextTime=%s", notepad.ID, nextTime.Format("2006-01-02T15:04:05"))
+	}
+	
+	apiReturn.Success(c)
 }

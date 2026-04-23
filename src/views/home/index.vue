@@ -7,6 +7,7 @@ import { Clock, SystemMonitor } from '@/components/deskModule'
 import SearchBoxWithSuggestions from '@/components/deskModule/SearchBoxWithSuggestions/index.vue'
 import { SvgIcon, SvgIconOnline } from '@/components/common'
 import { deletes, getListByGroupId, saveSort } from '@/api/panel/itemIcon'
+import { acknowledgeReminder, getNotepadList } from '@/api/panel/notepad'  // 确认提醒 API + 获取便签列表
 
 import { setTitle, updateLocalUserInfo, openUrlWithoutReferer } from '@/utils/cmn'
 import { useAuthStore, usePanelState } from '@/store'
@@ -46,7 +47,7 @@ const currentRightSelectItem = ref<Panel.ItemInfo | null>(null)
 const currentAddItenIconGroupId = ref<number | undefined>()
 const notepadVisible = ref(false)
 const notepadInstance = ref(null) // 便签实例
-let remindCheckTimer: number | null = null // 提醒检查定时器
+let remindEventSource: EventSource | null = null // SSE 连接
 const isMobile = ref(false)
 const showIcons = ref(true) // 控制图标显示/隐藏
 const showGroupNav = ref(false) // 控制分组导航显示/隐藏（默认隐藏）
@@ -60,12 +61,10 @@ interface RemindNotification {
   title: string
   time: string
   visible: boolean
-  autoCloseTimer?: number // 自动关闭定时器
   remindForce?: number // 强制提醒状态
   remindRepeat?: string // 重复类型
 }
 const remindNotifications = ref<RemindNotification[]>([])
-let notificationIdCounter = 0
 // 切换图标显示/隐藏
 function handleToggleIcons() {
   showIcons.value = !showIcons.value
@@ -122,7 +121,7 @@ function handleScroll() {
 }
 
 // 组件挂载时添加滚动监听和鼠标监听
-onMounted(() => {
+onMounted(async () => {
   // 监听滚动容器的滚动事件
   if (scrollContainerRef.value) {
     scrollContainerRef.value.addEventListener('scroll', handleScroll)
@@ -131,13 +130,18 @@ onMounted(() => {
   // 使用事件委托监听鼠标移动
   document.addEventListener('mousemove', handleMouseMove)
   
-  // 启动提醒检查
-  startRemindCheck()
+  // ✅ 启动 SSE 提醒推送并执行离线补偿
+  if (authStore.visitMode === VisitMode.VISIT_MODE_LOGIN) {
+    // 1. 先把数据库里“挂起”的提醒弹出来（离线补偿）
+    await checkInitialReminders()
+    // 2. 再开启实时推送
+    startRemindSSE()
+  }
 })
 
-// 组件卸载时清除定时器
+// 组件卸载时清除定时器和SSE连接
 onUnmounted(() => {
-  stopRemindCheck()
+  stopRemindSSE()
 })
 
 // 鼠标移动事件处理
@@ -152,218 +156,84 @@ function handleMouseMove(e: MouseEvent) {
   }
 }
 
-// ========== 提醒检查功能 ==========
-// 已提醒的便签ID集合（用于防止刷新后重复提醒）
-const remindedNoteIds = ref<Set<number>>(new Set())
+// ========== SSE 提醒功能 ==========
 
-// 从 sessionStorage 恢复已提醒记录
-const loadRemindedNotes = () => {
-  try {
-    const saved = sessionStorage.getItem('REMINDED_NOTE_IDS')
-    if (saved) {
-      const ids = JSON.parse(saved)
-      remindedNoteIds.value = new Set(ids)
-      console.log('[提醒检查] 恢复已提醒记录:', ids)
-    }
-  } catch (e) {
-    console.error('[提醒检查] 恢复已提醒记录失败:', e)
-  }
-}
-
-// 保存已提醒记录到 sessionStorage
-const saveRemindedNotes = () => {
-  try {
-    const ids = Array.from(remindedNoteIds.value)
-    sessionStorage.setItem('REMINDED_NOTE_IDS', JSON.stringify(ids))
-  } catch (e) {
-    console.error('[提醒检查] 保存已提醒记录失败:', e)
-  }
-}
-
-// 保存强制提醒的最后提醒时间（用于每小时检测）
-const saveForceRemindLastTime = (noteId: number, timestamp: number) => {
-  try {
-    const key = `FORCE_REMIND_LAST_TIME_${noteId}`
-    sessionStorage.setItem(key, timestamp.toString())
-  } catch (e) {
-    console.error('[强制提醒] 保存最后提醒时间失败:', e)
-  }
-}
-
-// 获取强制提醒的最后提醒时间
-const getForceRemindLastTime = (noteId: number): number | null => {
-  try {
-    const key = `FORCE_REMIND_LAST_TIME_${noteId}`
-    const value = sessionStorage.getItem(key)
-    return value ? parseInt(value) : null
-  } catch (e) {
-    console.error('[强制提醒] 获取最后提醒时间失败:', e)
-    return null
-  }
-}
-
-// 启动提醒检查
-const startRemindCheck = () => {
-  console.log('[提醒检查] 定时器已启动')
-  
-  // 从 sessionStorage 恢复已提醒记录
-  loadRemindedNotes()
-  
-  // 计算到下一个整分钟的毫秒数
-  const now = new Date()
-  const seconds = now.getSeconds()
-  const milliseconds = now.getMilliseconds()
-  const delayToNextMinute = (60 - seconds) * 1000 - milliseconds
-  
-  console.log(`[提醒检查] 将在 ${delayToNextMinute}ms 后进行首次检查（对齐到整分钟）`)
-  
-  // 延迟到下一个整分钟执行首次检查
-  setTimeout(() => {
-    checkReminds()
-    
-    // 之后每分钟检查一次（在整分钟时）
-    remindCheckTimer = window.setInterval(checkReminds, 60000)
-  }, delayToNextMinute)
-}
-
-// 停止提醒检查
-const stopRemindCheck = () => {
-  if (remindCheckTimer) {
-    clearInterval(remindCheckTimer)
-    remindCheckTimer = null
-    console.log('[提醒检查] 定时器已停止')
-  }
-}
-
-// 检查是否有到期的提醒
-const checkReminds = async () => {
-  // 只在登录状态下检查
-  if (authStore.visitMode !== VisitMode.VISIT_MODE_LOGIN) {
-    console.log('[提醒检查] 未登录，跳过检查')
+// 启动 SSE 提醒推送
+const startRemindSSE = () => {
+  if (!authStore.userInfo?.id) {
+    console.log('[SSE提醒] 未登录，跳过连接')
     return
   }
+
+  // 如果已有连接，先关闭
+  if (remindEventSource) {
+    remindEventSource.close()
+  }
+
+  const userId = authStore.userInfo.id
+  const url = `/api/panel/notepad/remindStream?userId=${userId}`
   
-  try {
-    console.log('[提醒检查] 开始检查...')
-    // 直接从 API 获取便签列表进行检查，不依赖组件实例
-    const res = await getNotepadList()
-    if (res.code === 0 && res.data) {
-      const now = new Date()
-      console.log(`[提醒检查] 当前时间: ${now.toLocaleString('zh-CN')}, 共${res.data.length}个便签`)
-      
-      for (const note of res.data) {
-        console.log(`[提醒检查] 便签: ${note.title}, remindTime: ${note.remindTime}, remindStatus: ${note.remindStatus}, remindForce: ${note.remindForce}, remindAdvanceDays: ${note.remindAdvanceDays}`)
-        
-        if (note.remindTime && note.remindStatus === 0) {
-          let baseRemindTime = new Date(note.remindTime)
-          
-          // 对于重复提醒，如果基准时间已过期，需要先递增到下一个周期
-          if (note.remindRepeat && note.remindRepeat !== 'none') {
-            const now = new Date()
-            while (baseRemindTime <= now) {
-              switch (note.remindRepeat) {
-                case 'daily':
-                  baseRemindTime.setDate(baseRemindTime.getDate() + 1)
-                  break
-                case 'weekly':
-                  baseRemindTime.setDate(baseRemindTime.getDate() + 7)
-                  break
-                case 'monthly':
-                  baseRemindTime.setMonth(baseRemindTime.getMonth() + 1)
-                  break
-                case 'yearly':
-                  baseRemindTime.setFullYear(baseRemindTime.getFullYear() + 1)
-                  break
-              }
-            }
-          }
-          
-          // 计算实际提醒时间 = 下一个基准时间 - 提前天数
-          const actualRemindTime = new Date(baseRemindTime)
-          if (note.remindAdvanceDays && note.remindAdvanceDays > 0) {
-            actualRemindTime.setDate(actualRemindTime.getDate() - note.remindAdvanceDays)
-          }
-          
-          const timeDiff = now.getTime() - actualRemindTime.getTime()
-          
-          console.log(`[提醒检查] 基准时间: ${baseRemindTime.toLocaleString('zh-CN')}, 实际时间: ${actualRemindTime.toLocaleString('zh-CN')}, 时间差: ${Math.floor(timeDiff / 1000)}秒`)
-          
-          // 处理强制提醒
-          if (note.remindForce === 1) {
-            // 强制提醒：只要过期了就每小时提醒一次
-            if (timeDiff >= 0) {
-              // 检查是否已经在本会话中提醒过
-              if (remindedNoteIds.value.has(note.id)) {
-                // 检查距离上次提醒是否已过1小时
-                const lastRemindTime = getForceRemindLastTime(note.id)
-                if (lastRemindTime && (now.getTime() - lastRemindTime) < 3600000) {
-                  console.log(`[强制提醒] 跳过，距离上次提醒不足1小时: ${note.title}`)
-                  continue
-                }
-              }
-              
-              console.log(`[强制提醒] 触发提醒: ${note.title}, 已过期${Math.floor(timeDiff / 60000)}分钟`)
-              showRemindNotification(note)
-              remindedNoteIds.value.add(note.id)
-              saveRemindedNotes()
-              saveForceRemindLastTime(note.id, now.getTime())
-              // 强制提醒不更新数据库状态，保持 remindStatus=0 以便下次继续提醒
-            }
-            continue
-          }
-          
-          // 跳过已经在本会话中提醒过的便签（非强制提醒）
-          if (remindedNoteIds.value.has(note.id)) {
-            console.log(`[提醒检查] 跳过已提醒: ${note.title}`)
-            continue
-          }
-          
-          // 处理过期提醒：如果是重复提醒，自动计算下次时间
-          if (timeDiff >= 300000) { // 超过5分钟视为过期
-            if (note.remindRepeat && note.remindRepeat !== 'none') {
-              console.log(`[提醒检查] 检测到过期的重复提醒: ${note.title}, 开始计算下次提醒时间`)
-              await markNoteAsReminded(note) // 计算并更新下次提醒时间
-              continue // 跳过本次，等待下次到期
-            } else {
-              console.log(`[提醒检查] 跳过过期提醒: ${note.title}, 已过期${Math.floor(timeDiff / 60000)}分钟`)
-              continue
-            }
-          }
-          
-          // 只提醒在最近5分钟内到期的（避免重复提醒过期的）
-          // timeDiff >= 0: 已经到期
-          // timeDiff < 300000: 在5分钟内（扩大窗口确保不会错过）
-          if (timeDiff >= 0 && timeDiff < 300000) {
-            console.log(`[提醒检查] 触发提醒: ${note.title}, 时间差: ${Math.floor(timeDiff / 1000)}秒`)
-            showRemindNotification(note)
-            // 标记为已提醒，防止刷新后重复显示
-            remindedNoteIds.value.add(note.id)
-            saveRemindedNotes()
-            // 直接调用 API 更新提醒状态，不依赖组件实例
-            await markNoteAsReminded(note)
-          } else if (timeDiff >= 0) {
-            // 这个分支理论上不会到达，因为上面已经处理了 >= 300000 的情况
-            console.log(`[提醒检查] 跳过过期提醒: ${note.title}, 已过期${Math.floor(timeDiff / 60000)}分钟`)
-          } else {
-            console.log(`[提醒检查] 还未到期: ${note.title}, 还有${Math.floor(-timeDiff / 1000)}秒`)
-          }
-        } else if (!note.remindTime) {
-          console.log(`[提醒检查] 无提醒时间: ${note.title}`)
-        } else if (note.remindStatus !== 0) {
-          console.log(`[提醒检查] 提醒状态不是0: ${note.title}, status: ${note.remindStatus}`)
+  console.log('[SSE提醒] 正在连接:', url)
+  remindEventSource = new EventSource(url)
+
+  // 连接成功
+  remindEventSource.addEventListener('connected', (event) => {
+    console.log('[SSE提醒] 连接成功')
+  })
+
+  // 接收提醒
+  remindEventSource.addEventListener('remind', (event) => {
+    console.log('[SSE提醒] 收到提醒:', event.data)
+    try {
+      // 解析数据（格式为 key:value,key:value）
+      const dataStr = event.data as string
+      const pairs = dataStr.split(',')
+      const data: any = {}
+      pairs.forEach(pair => {
+        const [key, ...valueParts] = pair.split(':')
+        if (key && valueParts.length > 0) {
+          data[key.trim()] = valueParts.join(':').trim()
         }
-      }
-    } else {
-      console.log('[提醒检查] API返回错误:', res)
+      })
+
+      // 转换为数字类型
+      if (data.id) data.id = parseInt(data.id)
+      if (data.remindForce) data.remindForce = parseInt(data.remindForce)
+      if (data.remindAdvanceDays) data.remindAdvanceDays = parseInt(data.remindAdvanceDays)
+
+      console.log('[SSE提醒] 解析后的数据:', data)
+      showRemindNotification(data)
+    } catch (error) {
+      console.error('[SSE提醒] 解析失败:', error)
     }
-  } catch (error) {
-    console.error('[提醒检查] 检查失败:', error)
+  })
+
+  // 错误处理
+  remindEventSource.onerror = (error) => {
+    console.error('[SSE提醒] 连接错误:', error)
+    if (remindEventSource?.readyState === EventSource.CLOSED) {
+      console.log('[SSE提醒] 连接已关闭')
+    }
+  }
+}
+
+// 停止 SSE 提醒推送
+const stopRemindSSE = () => {
+  if (remindEventSource) {
+    remindEventSource.close()
+    remindEventSource = null
+    console.log('[SSE提醒] 连接已关闭')
   }
 }
 
 // 显示提醒通知（卡片式）
 const showRemindNotification = (note: any) => {
-  const id = ++notificationIdCounter
+  // ✅ 去重机制：如果该便签已经在显示了，不再弹出
+  if (remindNotifications.value.some(n => n.noteId === note.id)) {
+    return
+  }
+
+  const id = Date.now() // 生成一个前端展示用的唯一 ID
   
   // 计算实际提醒时间用于显示
   let displayTime = note.remindTime
@@ -386,13 +256,9 @@ const showRemindNotification = (note: any) => {
   
   remindNotifications.value.push(notification)
   
-  // 10秒后自动消失
-  const timer = window.setTimeout(() => {
-    closeNotification(id)
-  }, 10000)
-  notification.autoCloseTimer = timer
-  
-  // 浏览器通知
+  // ✅ 移除定时自动消失逻辑：不再设置 window.setTimeout
+
+  // 浏览器原生通知保持不变
   if ('Notification' in window && Notification.permission === 'granted') {
     new Notification('⏰ 提醒', {
       body: note.title,
@@ -401,70 +267,34 @@ const showRemindNotification = (note: any) => {
   }
 }
 
-// 关闭通知
+// 关闭通知（用户点击“知道了”）
 const closeNotification = async (id: number) => {
   const index = remindNotifications.value.findIndex(n => n.id === id)
   if (index > -1) {
     const notification = remindNotifications.value[index]
     
-    // 如果是强制提醒且有重复类型，需要更新下次提醒时间
-    if (notification.remindForce === 1 && notification.remindRepeat && notification.remindRepeat !== 'none') {
-      console.log(`[强制提醒] 用户点击知道了，更新下次提醒时间: ${notification.title}`)
-      // 获取便签完整信息
-      try {
-        const res = await getNotepadList()
-        if (res.code === 0 && res.data) {
-          const note = res.data.find((n: any) => n.id === notification.noteId)
-          if (note) {
-            await markNoteAsReminded(note)
-            // 清除强制提醒的最后提醒时间记录
-            const key = `FORCE_REMIND_LAST_TIME_${note.id}`
-            sessionStorage.removeItem(key)
-            // 清除已提醒记录，允许下次正常提醒
-            remindedNoteIds.value.delete(note.id)
-            saveRemindedNotes()
-          }
-        }
-      } catch (e) {
-        console.error('[强制提醒] 更新下次提醒时间失败:', e)
-      }
+    // 移除定时器清理代码（因为已经没有定时器了）
+    
+    try {
+      // 1. 调用后端确认 API
+      await acknowledgeReminder({ id: notification.noteId })
+      console.log('[提醒确认] 成功:', notification.noteId)
+      
+      // 2. ✅ 刷新列表：确保桌面图标、便签列表的状态实时同步为“已处理”
+      handleRefreshData()
+      
+    } catch (error) {
+      console.error('[提醒确认] 失败:', error)
     }
     
-    // 清除自动关闭定时器
-    if (notification.autoCloseTimer) {
-      clearTimeout(notification.autoCloseTimer!)
-    }
+    // 3. UI 隐藏动画
     notification.visible = false
-    // 动画结束后移除
     setTimeout(() => {
       remindNotifications.value = remindNotifications.value.filter(n => n.id !== id)
     }, 300)
   }
 }
 
-// 暂停自动关闭
-const pauseAutoClose = (event: MouseEvent) => {
-  const card = (event.currentTarget as HTMLElement)
-  const notificationId = parseInt(card.getAttribute('data-id') || '0')
-  const notification = remindNotifications.value.find(n => n.id === notificationId)
-  if (notification && notification.autoCloseTimer) {
-    clearTimeout(notification.autoCloseTimer)
-    notification.autoCloseTimer = undefined
-  }
-}
-
-// 恢复自动关闭
-const resumeAutoClose = (event: MouseEvent) => {
-  const card = (event.currentTarget as HTMLElement)
-  const notificationId = parseInt(card.getAttribute('data-id') || '0')
-  const notification = remindNotifications.value.find(n => n.id === notificationId)
-  if (notification && !notification.autoCloseTimer) {
-    const timer = window.setTimeout(() => {
-      closeNotification(notificationId)
-    }, 5000) // 鼠标移开后5秒关闭
-    notification.autoCloseTimer = timer
-  }
-}
 
 // 查看便签
 const viewNotepad = (noteId: number, notificationId: number) => {
@@ -479,50 +309,39 @@ const viewNotepad = (noteId: number, notificationId: number) => {
   }, 100)
 }
 
-// 清除指定便签的提醒记录（当用户手动编辑或删除提醒时调用）
-const clearRemindedRecord = (noteId: number) => {
-  if (remindedNoteIds.value.has(noteId)) {
-    remindedNoteIds.value.delete(noteId)
-    saveRemindedNotes()
-    console.log('[提醒检查] 清除提醒记录:', noteId)
-  }
-}
-
-// 处理便签组件的提醒状态变化事件
-const handleRemindStatusChanged = (noteId: number) => {
-  console.log('[提醒检查] 收到提醒状态变化事件:', noteId)
-  clearRemindedRecord(noteId)
-}
-
-// 标记为已提醒（直接调用API，不依赖组件实例）
-const markNoteAsReminded = async (note: any) => {
+// ✅ 离线补偿检查：页面加载时检查是否有未确认的提醒（remindStatus === 1）
+const checkInitialReminders = async () => {
+  if (authStore.visitMode !== VisitMode.VISIT_MODE_LOGIN) return
+  
   try {
-    // 对于重复提醒，不更新 remindTime，保持原始基准时间
-    // 只重置 remindStatus 为 0（未提醒），下次检查时会自动计算下一个周期
-    let remindTime = note.remindTime  // 保持原值不变
-    let remindStatus = 1  // 默认标记为已提醒
-    
-    // 如果是重复提醒，保持 remindStatus=0 以便下次继续检查
-    if (note.remindRepeat && note.remindRepeat !== 'none') {
-      remindStatus = 0
-      console.log(`[提醒检查] 重复提醒，保持 remindStatus=0，基准时间不变: ${remindTime}`)
+    const res = await getNotepadList()
+    if (res.code === 0 && res.data) {
+      // 找出所有状态为 1 (待确认) 的便签
+      const pendingReminds = res.data.filter((note: any) => note.remindStatus === 1)
+      console.log('[SSE提醒] 发现离线期间未确认提醒:', pendingReminds.length)
+      
+      // 逐个弹出（showRemindNotification 内部已有去重逻辑，不会重复弹出）
+      pendingReminds.forEach((note: any) => {
+        showRemindNotification(note)
+      })
     }
-    
-    // 直接调用 API 更新
-    await saveNotepadContent({
-      id: note.id,
-      title: note.title,
-      content: note.content,
-      remindTime: remindTime,  // 保持原始基准时间
-      remindStatus: remindStatus,
-      remindRepeat: note.remindRepeat || 'none',
-      remindForce: note.remindForce || 0,
-      remindAdvanceDays: note.remindAdvanceDays || 0  // 保留提前天数
-    })
-  } catch (e) {
-    console.error('Mark reminded error', e)
+  } catch (error) {
+    console.error('[SSE提醒] 获取离线提醒失败:', error)
   }
 }
+
+// ✅ 离线补偿检查：页面加载时检查是否有未确认的提醒（remindStatus === 1）
+function checkOfflineReminders() {
+  filterItems.value.forEach(group => {
+    group.items?.forEach(item => {
+      // item 本身是 NotepadInfo 的子集，如果它的状态是 1
+      if ((item as any).remindStatus === 1) {
+        showRemindNotification(item)
+      }
+    })
+  })
+}
+
 async function handleRefreshData() {
   try {
     // 删除除用户登录信息外的所有缓存
@@ -592,7 +411,6 @@ useWindowSize()
 
 // 从API导入获取书签列表的函数
 import { getList as getBookmarksList } from '@/api/panel/bookmark'
-import { getNotepadList, saveNotepadContent } from '@/api/panel/notepad'
 import { getList as getGroupList } from '@/api/panel/itemIconGroup'
 import { ss } from '@/utils/storage/local'
 import { getSystemSettings } from '@/api/system/systemSetting'
@@ -1052,6 +870,8 @@ async function getList() {
       }
       // 应用网络模式过滤
       filterItemsByNetworkMode()
+      // ✅ 离线补偿检查：检查是否有未确认的提醒
+      checkOfflineReminders()
       return
     }
 
@@ -1070,6 +890,8 @@ async function getList() {
       }
       // 应用网络模式过滤
       filterItemsByNetworkMode()
+      // ✅ 离线补偿检查：检查是否有未确认的提醒
+      checkOfflineReminders()
     }
   } catch (error) {
     // 出错时尝试从缓存获取
@@ -1084,6 +906,8 @@ async function getList() {
       }
       // 应用网络模式过滤
       filterItemsByNetworkMode()
+      // ✅ 离线补偿检查：检查是否有未确认的提醒
+      checkOfflineReminders()
     }
   }
 }
@@ -1404,6 +1228,11 @@ onMounted(async () => {
 
   // 加载书签数据，使用forceRefresh=true确保获取最新排序
   await loadBookmarkTree(false)
+
+  // 启动 SSE 提醒推送（登录状态下）
+  if (authStore.visitMode === VisitMode.VISIT_MODE_LOGIN) {
+    startRemindSSE()
+  }
 })
 
 onActivated(() => {
@@ -1892,7 +1721,6 @@ function getNetworkModeButtonIcon() {
       <NotePad 
         ref="notepadInstance" 
         v-model:visible="notepadVisible" 
-        @remind-status-changed="handleRemindStatusChanged"
       />
       <!-- <Setting v-model:visible="settingModalShow" /> -->
     </div>
@@ -1950,9 +1778,6 @@ function getNetworkModeButtonIcon() {
           :key="notification.id"
           v-show="notification.visible"
           class="remind-notification-card"
-          :data-id="notification.id"
-          @mouseenter="pauseAutoClose"
-          @mouseleave="resumeAutoClose"
         >
           <div class="notification-header">
             <div class="notification-icon">

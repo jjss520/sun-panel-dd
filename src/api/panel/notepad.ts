@@ -6,7 +6,7 @@ export interface NotepadInfo {
     title: string
     content: string
     remindTime?: string  // 提醒时间 ISO 格式
-    remindStatus?: number  // 0=未提醒, 1=已提醒
+    remindStatus?: number  // 0=等待触发, 1=待确认, 2=已结束
     remindRepeat?: string  // 重复类型: none/daily/weekly/monthly/yearly
     remindForce?: number  // 强制提醒: 0=关闭, 1=开启
     remindAdvanceDays?: number  // 提前提醒天数（0=不提前）
@@ -48,5 +48,13 @@ export function uploadNotepadFile(data: FormData) {
         headers: {
             'Content-Type': 'multipart/form-data',
         },
+    })
+}
+
+// 确认提醒（用户点击“我知道”）
+export function acknowledgeReminder(data: { id: number }) {
+    return post<any>({
+        url: '/panel/notepad/acknowledge',
+        data,
     })
 }

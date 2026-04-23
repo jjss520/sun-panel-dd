@@ -17,5 +17,9 @@ func InitNotepad(router *gin.RouterGroup) {
 		r.POST("panel/notepad/save", notepad.Save)
 		r.POST("panel/notepad/delete", notepad.Delete)
 		r.POST("panel/notepad/upload", notepad.Upload)
+		r.POST("panel/notepad/acknowledge", notepad.Acknowledge) // 确认提醒
 	}
+	
+	// SSE 实时推送（不需要登录拦截，通过 userId 参数验证）
+	router.GET("panel/notepad/remindStream", notepad.RemindStream)
 }
