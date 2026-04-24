@@ -99,21 +99,11 @@ func (a *Notepad) Save(c *gin.Context) {
 					// 如果有重复类型，计算下一个周期
 					actualTime := selectedTime
 					if req.RemindRepeat != "" && req.RemindRepeat != "none" {
-						// 先加一个周期
-						switch req.RemindRepeat {
-						case "daily":
-							actualTime = actualTime.AddDate(0, 0, 1)
-						case "weekly":
-							actualTime = actualTime.AddDate(0, 0, 7)
-						case "monthly":
-							actualTime = actualTime.AddDate(0, 1, 0)
-						case "yearly":
-							actualTime = actualTime.AddDate(1, 0, 0)
-						}
-						
-						// 如果加了周期后还是小于等于现在，继续循环直到找到未来的时间
 						now := time.Now()
-						for actualTime.Before(now) || actualTime.Equal(now) {
+										
+						// 只有当基准时间已经过去时，才计算下一个周期
+						if !selectedTime.After(now) {
+							// 基准时间已过，计算下一个周期
 							switch req.RemindRepeat {
 							case "daily":
 								actualTime = actualTime.AddDate(0, 0, 1)
@@ -124,8 +114,23 @@ func (a *Notepad) Save(c *gin.Context) {
 							case "yearly":
 								actualTime = actualTime.AddDate(1, 0, 0)
 							}
+											
+							// 如果加了周期后还是小于等于现在，继续循环直到找到未来的时间
+							for actualTime.Before(now) || actualTime.Equal(now) {
+								switch req.RemindRepeat {
+								case "daily":
+									actualTime = actualTime.AddDate(0, 0, 1)
+								case "weekly":
+									actualTime = actualTime.AddDate(0, 0, 7)
+								case "monthly":
+									actualTime = actualTime.AddDate(0, 1, 0)
+								case "yearly":
+									actualTime = actualTime.AddDate(1, 0, 0)
+								}
+							}
 						}
-						
+						// 如果基准时间是未来的，直接使用，不加周期
+										
 						// 只有重复任务才应用提前天数
 						if req.RemindAdvanceDays != nil && *req.RemindAdvanceDays > 0 {
 							actualTime = actualTime.AddDate(0, 0, -*req.RemindAdvanceDays)
@@ -176,19 +181,11 @@ func (a *Notepad) Save(c *gin.Context) {
 			if err == nil {
 				actualTime := selectedTime
 				if req.RemindRepeat != "" && req.RemindRepeat != "none" {
-					switch req.RemindRepeat {
-					case "daily":
-						actualTime = actualTime.AddDate(0, 0, 1)
-					case "weekly":
-						actualTime = actualTime.AddDate(0, 0, 7)
-					case "monthly":
-						actualTime = actualTime.AddDate(0, 1, 0)
-					case "yearly":
-						actualTime = actualTime.AddDate(1, 0, 0)
-					}
-					
 					now := time.Now()
-					for actualTime.Before(now) || actualTime.Equal(now) {
+								
+					// 只有当基准时间已经过去时，才计算下一个周期
+					if !selectedTime.After(now) {
+						// 基准时间已过，计算下一个周期
 						switch req.RemindRepeat {
 						case "daily":
 							actualTime = actualTime.AddDate(0, 0, 1)
@@ -199,8 +196,23 @@ func (a *Notepad) Save(c *gin.Context) {
 						case "yearly":
 							actualTime = actualTime.AddDate(1, 0, 0)
 						}
+									
+						// 如果加了周期后还是小于等于现在，继续循环直到找到未来的时间
+						for actualTime.Before(now) || actualTime.Equal(now) {
+							switch req.RemindRepeat {
+							case "daily":
+								actualTime = actualTime.AddDate(0, 0, 1)
+							case "weekly":
+								actualTime = actualTime.AddDate(0, 0, 7)
+							case "monthly":
+								actualTime = actualTime.AddDate(0, 1, 0)
+							case "yearly":
+								actualTime = actualTime.AddDate(1, 0, 0)
+							}
+						}
 					}
-					
+					// 如果基准时间是未来的，直接使用，不加周期
+								
 					// 只有重复任务才应用提前天数
 					if req.RemindAdvanceDays != nil && *req.RemindAdvanceDays > 0 {
 						actualTime = actualTime.AddDate(0, 0, -*req.RemindAdvanceDays)

@@ -662,68 +662,12 @@ const advanceDaysOptions = computed(() => {
 
 // 下次实际提醒时间显示
 const nextActualRemindTime = computed(() => {
-    // 优先使用 remindBaseTime（用户原始选择的时间），如果没有则使用 remindTime
-    const baseTimeStr = currentNote.value.remindBaseTime || currentNote.value.remindTime
-    if (!baseTimeStr) {
-        return ''
+    // 直接使用后端计算的 remindTime（实际触发时间）
+    if (currentNote.value.remindTime) {
+        const remindTime = new Date(currentNote.value.remindTime)
+        return formatLocalDate(remindTime)
     }
-    
-    // 计算下一次基准提醒时间（考虑重复类型）
-    const baseTime = new Date(baseTimeStr)
-    const now = new Date()
-    let nextBaseTime = new Date(baseTime)
-    
-    // 如果设置了重复类型，总是先加一个周期，然后确保是未来的时间
-    if (currentNote.value.remindRepeat && currentNote.value.remindRepeat !== 'none') {
-        // 先加一个周期
-        switch (currentNote.value.remindRepeat) {
-            case 'daily':
-                nextBaseTime.setDate(nextBaseTime.getDate() + 1)
-                break
-            case 'weekly':
-                nextBaseTime.setDate(nextBaseTime.getDate() + 7)
-                break
-            case 'monthly':
-                nextBaseTime.setMonth(nextBaseTime.getMonth() + 1)
-                break
-            case 'yearly':
-                nextBaseTime.setFullYear(nextBaseTime.getFullYear() + 1)
-                break
-        }
-        
-        // 如果加了周期后还是小于等于现在，继续循环直到找到未来的时间
-        while (nextBaseTime <= now) {
-            switch (currentNote.value.remindRepeat) {
-                case 'daily':
-                    nextBaseTime.setDate(nextBaseTime.getDate() + 1)
-                    break
-                case 'weekly':
-                    nextBaseTime.setDate(nextBaseTime.getDate() + 7)
-                    break
-                case 'monthly':
-                    nextBaseTime.setMonth(nextBaseTime.getMonth() + 1)
-                    break
-                case 'yearly':
-                    nextBaseTime.setFullYear(nextBaseTime.getFullYear() + 1)
-                    break
-            }
-        }
-    }
-    
-    // 实际提醒时间 = 下一次基准时间 - 提前天数
-    const actualTime = new Date(nextBaseTime)
-    if (currentAdvanceDays.value > 0) {
-        actualTime.setDate(actualTime.getDate() - currentAdvanceDays.value)
-    }
-    
-    console.log('[NotePad] 计算实际提醒时间:', {
-        baseTime: formatLocalDateTime(baseTime),
-        nextBaseTime: formatLocalDateTime(nextBaseTime),
-        advanceDays: currentAdvanceDays.value,
-        actualTime: formatLocalDate(actualTime)
-    })
-    
-    return formatLocalDate(actualTime)
+    return ''
 })
 
 // 格式化本地日期（不含时间）
