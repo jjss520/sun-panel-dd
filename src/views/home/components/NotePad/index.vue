@@ -65,7 +65,7 @@
                     @click.stop="deleteNote(note)"
                   />
                 </div>
-                <div class="note-item-time">{{ formatDate(note.updatedAt) }}</div>
+                <div class="note-item-time">{{ formatDate(note.updateTime) }}</div>
               </div>
             </div>
 
@@ -101,7 +101,7 @@
             <!-- 底部信息 -->
             <div class="editor-footer">
               <span class="footer-text">
-                最后编辑：{{ formatFullDate(currentNote.updatedAt) }}，创建：{{ formatFullDate(currentNote.createdAt) }}
+                最后编辑：{{ formatFullDate(currentNote.updateTime) }}，创建：{{ formatFullDate(currentNote.createTime) }}
               </span>
             </div>
 

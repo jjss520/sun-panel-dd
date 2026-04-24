@@ -10,8 +10,8 @@ export interface NotepadInfo {
     remindStatus?: number  // 0=等待触发, 1=待确认, 2=已结束
     remindRepeat?: string  // 重复类型: none/daily/weekly/monthly/yearly
     remindAdvanceDays?: number  // 提前提醒天数（0=不提前）
-    createdAt: string
-    updatedAt: string
+    createTime: string
+    updateTime: string
 }
 
 export function getNotepadContent(id?: number) {
