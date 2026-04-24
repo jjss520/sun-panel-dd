@@ -180,8 +180,15 @@
                 
                 <!-- 确认按钮 -->
                 <div class="remind-picker-actions">
+                  <button 
+                    v-if="currentNote.remindTime && currentNote.remindStatus !== 2" 
+                    class="cancel-btn" 
+                    @click="handleCancelRemind"
+                  >
+                    取消提醒
+                  </button>
                   <button class="confirm-btn" @click="handleConfirmRemind">
-                    确认
+                    {{ currentNote.remindTime && currentNote.remindStatus !== 2 ? '修改' : '确认' }}
                   </button>
                 </div>
               </div>
@@ -379,6 +386,13 @@ const selectNote = (note: NotepadInfo) => {
     currentNote.value = { ...note }
     currentRepeatType.value = note.remindRepeat || 'none'
     currentAdvanceDays.value = note.remindAdvanceDays || 0
+    
+    // 如果重复类型是“不重复”或“每天”，强制重置提前天数为0
+    if (currentRepeatType.value === 'none' || currentRepeatType.value === 'daily') {
+        currentAdvanceDays.value = 0
+        currentNote.value.remindAdvanceDays = 0
+    }
+    
     if (editorRef.value) {
         editorRef.value.innerHTML = note.content || ''
         nextTick(() => {
@@ -465,6 +479,20 @@ const handleConfirmRemind = () => {
     console.log('[NotePad] ==========================================')
 }
 
+// 取消提醒
+const handleCancelRemind = async () => {
+    dialog.warning({
+        title: '确认取消',
+        content: `确定要取消便签「${currentNote.value.title || '无标题'}」的提醒吗？`,
+        positiveText: '取消提醒',
+        negativeText: '再想想',
+        onPositiveClick: async () => {
+            await setRemind(null, true)
+            message.success('已取消提醒')
+        }
+    })
+}
+
 const setRemind = async (timestamp: number | null, autoClose: boolean = false) => {
     console.log('[NotePad] ========== setRemind ==========')
     console.log('[NotePad] timestamp:', timestamp)
@@ -484,7 +512,7 @@ const setRemind = async (timestamp: number | null, autoClose: boolean = false) =
             id: currentNote.value.id,
             title: currentNote.value.title,
             remindTime: remindTime,
-            remindStatus: remindTime ? 0 : 1,
+            remindStatus: remindTime ? 0 : 2,  // 有时间为等待触发(0)，无时间为已结束(2)
             remindRepeat: currentRepeatType.value,
             remindAdvanceDays: currentAdvanceDays.value
         })
@@ -494,14 +522,14 @@ const setRemind = async (timestamp: number | null, autoClose: boolean = false) =
             title: currentNote.value.title || '',
             content: currentNote.value.content || '',
             remindTime: remindTime,
-            remindStatus: remindTime ? 0 : 1,
+            remindStatus: remindTime ? 0 : 2,  // 有时间为等待触发(0)，无时间为已结束(2)
             remindRepeat: currentRepeatType.value,
             remindAdvanceDays: currentAdvanceDays.value
         })
         
         console.log('[NotePad] 保存成功，更新本地状态')
         currentNote.value.remindTime = remindTime || undefined
-        currentNote.value.remindStatus = remindTime ? 0 : 1
+        currentNote.value.remindStatus = remindTime ? 0 : 2  // 有时间为等待触发(0)，无时间为已结束(2)
         currentNote.value.remindRepeat = currentRepeatType.value
         currentNote.value.remindAdvanceDays = currentAdvanceDays.value
         await loadList()
@@ -536,19 +564,34 @@ const handleOpenRemindPicker = () => {
     console.log('[NotePad] currentNote.value:', JSON.stringify(currentNote.value, null, 2))
     console.log('[NotePad] currentNote.remindAdvanceDays:', currentNote.value.remindAdvanceDays)
     console.log('[NotePad] currentNote.remindTime:', currentNote.value.remindTime)
+    console.log('[NotePad] currentNote.remindRepeat:', currentNote.value.remindRepeat)
     console.log('[NotePad] currentAdvanceDays before:', currentAdvanceDays.value)
+    
+    // 从 currentNote 重新读取 remindRepeat 状态
+    currentRepeatType.value = currentNote.value.remindRepeat || 'none'
     
     // 从 currentNote 重新读取 remindAdvanceDays 状态
     if (currentNote.value.remindAdvanceDays !== undefined) {
         currentAdvanceDays.value = currentNote.value.remindAdvanceDays
-        console.log('[NotePad] 从 currentNote 同步 remindAdvanceDays:', currentAdvanceDays.value)
+    } else {
+        currentAdvanceDays.value = 0
     }
     
-    // 从 currentNote.remindTime 解析日期时间
-    if (currentNote.value.remindTime) {
-        const date = new Date(currentNote.value.remindTime)
+    // 如果重复类型是“不重复”或“每天”，强制重置提前天数为0
+    if (currentRepeatType.value === 'none' || currentRepeatType.value === 'daily') {
+        currentAdvanceDays.value = 0
+        console.log('[NotePad] 重复类型为不重复/每天，重置提前天数为0')
+    }
+    
+    console.log('[NotePad] 从 currentNote 同步 remindAdvanceDays:', currentAdvanceDays.value)
+    
+    // 优先从 remindBaseTime 解析日期时间（用户原始选择的时间），如果没有则使用 remindTime
+    const timeStr = currentNote.value.remindBaseTime || currentNote.value.remindTime
+    if (timeStr) {
+        const date = new Date(timeStr)
         if (!isNaN(date.getTime())) {
             remindTimestamp.value = date.getTime()
+            console.log('[NotePad] 从', currentNote.value.remindBaseTime ? 'remindBaseTime' : 'remindTime', '加载时间:', timeStr)
         }
     } else {
         // 清除日期时间选择器
@@ -563,8 +606,14 @@ const handleOpenRemindPicker = () => {
 
 // 处理重复类型变化
 const handleRepeatChange = () => {
-    // 只更新本地状态，不立即保存，等待用户点击"完成"
+    // 只更新本地状态，不立即保存，等待用户点击“完成”
     currentNote.value.remindRepeat = currentRepeatType.value
+    
+    // 如果切换到“不重复”或“每天”，重置提前天数为0
+    if (currentRepeatType.value === 'none' || currentRepeatType.value === 'daily') {
+        currentAdvanceDays.value = 0
+        currentNote.value.remindAdvanceDays = 0
+    }
 }
 
 // 处理提前天数变化
@@ -613,19 +662,20 @@ const advanceDaysOptions = computed(() => {
 
 // 下次实际提醒时间显示
 const nextActualRemindTime = computed(() => {
-    if (!currentNote.value.remindTime) {
+    // 优先使用 remindBaseTime（用户原始选择的时间），如果没有则使用 remindTime
+    const baseTimeStr = currentNote.value.remindBaseTime || currentNote.value.remindTime
+    if (!baseTimeStr) {
         return ''
     }
     
     // 计算下一次基准提醒时间（考虑重复类型）
-    const baseTime = new Date(currentNote.value.remindTime)
+    const baseTime = new Date(baseTimeStr)
     const now = new Date()
     let nextBaseTime = new Date(baseTime)
     
-    // 如果设置了重复类型，计算下一个周期的基准时间
-    // 对于重复提醒，总是计算到下一个周期（即使原始日期是未来）
+    // 如果设置了重复类型，总是先加一个周期，然后确保是未来的时间
     if (currentNote.value.remindRepeat && currentNote.value.remindRepeat !== 'none') {
-        // 先加一个周期，然后再判断是否需要继续往后推
+        // 先加一个周期
         switch (currentNote.value.remindRepeat) {
             case 'daily':
                 nextBaseTime.setDate(nextBaseTime.getDate() + 1)
@@ -1310,7 +1360,34 @@ const initData = async () => {
 .remind-picker-actions {
   margin-top: 12px;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cancel-btn {
+  min-width: 80px;
+  padding: 8px 20px;
+  background: #f5f5f7;
+  color: #ff3b30;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.cancel-btn:hover {
+  background: #ffebee;
+  border-color: #ff3b30;
+}
+
+.cancel-btn:active {
+  transform: scale(0.98);
 }
 
 .confirm-btn {

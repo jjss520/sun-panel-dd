@@ -85,32 +85,21 @@ func (a *Notepad) Save(c *gin.Context) {
 		notepad.Title = req.Title
 		notepad.Content = req.Content
 		
-		// 计算实际触发时间
-		if req.RemindTime != "" && req.RemindTime != "none" {
-			// 解析用户选择的时间（原始时间）
-			selectedTime, err := time.ParseInLocation("2006-01-02T15:04:05", req.RemindTime, time.Local)
-			if err == nil {
-				// 保存原始时间
-				notepad.RemindBaseTime = req.RemindTime
-				
-				// 如果有重复类型，计算下一个周期
-				actualTime := selectedTime
-				if req.RemindRepeat != "" && req.RemindRepeat != "none" {
-					// 先加一个周期
-					switch req.RemindRepeat {
-					case "daily":
-						actualTime = actualTime.AddDate(0, 0, 1)
-					case "weekly":
-						actualTime = actualTime.AddDate(0, 0, 7)
-					case "monthly":
-						actualTime = actualTime.AddDate(0, 1, 0)
-					case "yearly":
-						actualTime = actualTime.AddDate(1, 0, 0)
-					}
+		// 只有当 RemindTime 不为空时，才更新提醒相关字段
+		// 这样自动保存（不传 remindTime）不会覆盖数据库中的提醒设置
+		if req.RemindTime != "" {
+			// 计算实际触发时间
+			if req.RemindTime != "none" {
+				// 解析用户选择的时间（原始时间）
+				selectedTime, err := time.ParseInLocation("2006-01-02T15:04:05", req.RemindTime, time.Local)
+				if err == nil {
+					// 保存原始时间
+					notepad.RemindBaseTime = req.RemindTime
 					
-					// 如果加了周期后还是小于等于现在，继续循环直到找到未来的时间
-					now := time.Now()
-					for actualTime.Before(now) || actualTime.Equal(now) {
+					// 如果有重复类型，计算下一个周期
+					actualTime := selectedTime
+					if req.RemindRepeat != "" && req.RemindRepeat != "none" {
+						// 先加一个周期
 						switch req.RemindRepeat {
 						case "daily":
 							actualTime = actualTime.AddDate(0, 0, 1)
@@ -121,26 +110,47 @@ func (a *Notepad) Save(c *gin.Context) {
 						case "yearly":
 							actualTime = actualTime.AddDate(1, 0, 0)
 						}
+						
+						// 如果加了周期后还是小于等于现在，继续循环直到找到未来的时间
+						now := time.Now()
+						for actualTime.Before(now) || actualTime.Equal(now) {
+							switch req.RemindRepeat {
+							case "daily":
+								actualTime = actualTime.AddDate(0, 0, 1)
+							case "weekly":
+								actualTime = actualTime.AddDate(0, 0, 7)
+							case "monthly":
+								actualTime = actualTime.AddDate(0, 1, 0)
+							case "yearly":
+								actualTime = actualTime.AddDate(1, 0, 0)
+							}
+						}
+						
+						// 只有重复任务才应用提前天数
+						if req.RemindAdvanceDays != nil && *req.RemindAdvanceDays > 0 {
+							actualTime = actualTime.AddDate(0, 0, -*req.RemindAdvanceDays)
+						}
 					}
+					
+					// 存储实际触发时间
+					notepad.RemindTime = actualTime.Format("2006-01-02T15:04:05")
+					advanceDays := 0
+					if req.RemindAdvanceDays != nil {
+						advanceDays = *req.RemindAdvanceDays
+					}
+					log.Printf("[提醒保存] ID=%d, 原始时间=%s, 实际触发=%s, 重复=%s, 提前=%d天", 
+						notepad.ID, notepad.RemindBaseTime, notepad.RemindTime, req.RemindRepeat, advanceDays)
+				} else {
+					notepad.RemindTime = req.RemindTime
+					notepad.RemindBaseTime = req.RemindTime
 				}
-				
-				// 如果有提前天数，减去提前天数
-				if req.RemindAdvanceDays != nil && *req.RemindAdvanceDays > 0 {
-					actualTime = actualTime.AddDate(0, 0, -*req.RemindAdvanceDays)
-				}
-				
-				// 存储实际触发时间
-				notepad.RemindTime = actualTime.Format("2006-01-02T15:04:05")
-				log.Printf("[提醒保存] ID=%d, 原始时间=%s, 实际触发=%s, 重复=%s, 提前=%d天", 
-					notepad.ID, notepad.RemindBaseTime, notepad.RemindTime, req.RemindRepeat, *req.RemindAdvanceDays)
 			} else {
-				notepad.RemindTime = req.RemindTime
-				notepad.RemindBaseTime = req.RemindTime
+				// RemindTime == "none"，清除提醒
+				notepad.RemindTime = ""
+				notepad.RemindBaseTime = ""
 			}
-		} else {
-			notepad.RemindTime = req.RemindTime
-			notepad.RemindBaseTime = req.RemindTime
 		}
+		// 如果 req.RemindTime 为空，不修改数据库中的提醒时间
 		
 		// 只有当字段不为 nil 时才更新，避免覆盖数据库中的值
 		if req.RemindStatus != nil {
@@ -190,15 +200,20 @@ func (a *Notepad) Save(c *gin.Context) {
 							actualTime = actualTime.AddDate(1, 0, 0)
 						}
 					}
-				}
-				
-				if req.RemindAdvanceDays != nil && *req.RemindAdvanceDays > 0 {
-					actualTime = actualTime.AddDate(0, 0, -*req.RemindAdvanceDays)
+					
+					// 只有重复任务才应用提前天数
+					if req.RemindAdvanceDays != nil && *req.RemindAdvanceDays > 0 {
+						actualTime = actualTime.AddDate(0, 0, -*req.RemindAdvanceDays)
+					}
 				}
 				
 				actualRemindTime = actualTime.Format("2006-01-02T15:04:05")
+				advanceDays := 0
+				if req.RemindAdvanceDays != nil {
+					advanceDays = *req.RemindAdvanceDays
+				}
 				log.Printf("[提醒保存] 新建, 原始时间=%s, 实际触发=%s, 重复=%s, 提前=%d天", 
-					baseRemindTime, actualRemindTime, req.RemindRepeat, *req.RemindAdvanceDays)
+					baseRemindTime, actualRemindTime, req.RemindRepeat, advanceDays)
 			}
 		}
 		
@@ -440,12 +455,19 @@ func (a *Notepad) Acknowledge(c *gin.Context) {
 			"2006-01-02 15:04:05",
 		}
 		
-		var remindTime time.Time
+		var baseTime time.Time
 		parsed := false
+		
+		// 优先使用 RemindBaseTime（用户原始选择的时间），如果没有则使用 RemindTime
+		timeStr := notepad.RemindBaseTime
+		if timeStr == "" {
+			timeStr = notepad.RemindTime
+		}
+		
 		for _, format := range parseFormats {
-			t, err := time.ParseInLocation(format, notepad.RemindTime, time.Local)
+			t, err := time.ParseInLocation(format, timeStr, time.Local)
 			if err == nil {
-				remindTime = t
+				baseTime = t
 				parsed = true
 				break
 			}
@@ -464,20 +486,44 @@ func (a *Notepad) Acknowledge(c *gin.Context) {
 		}
 		
 		now := time.Now()
-		nextTime := checker.CalculateNextRemindTime(remindTime, notepad.RemindRepeat, now)
+		nextBaseTime := checker.CalculateNextRemindTime(baseTime, notepad.RemindRepeat, now)
 		
 		// 如果有提前天数，需要减去提前天数得到实际触发时间
+		actualNextTime := nextBaseTime
 		if notepad.RemindAdvanceDays > 0 {
-			nextTime = nextTime.AddDate(0, 0, -notepad.RemindAdvanceDays)
+			actualNextTime = nextBaseTime.AddDate(0, 0, -notepad.RemindAdvanceDays)
+		}
+		
+		// 如果实际触发时间已经过去，需要继续往后推周期，直到找到未来的时间
+		for !actualNextTime.After(now) {
+			// 再往后推一个周期
+			switch notepad.RemindRepeat {
+			case "daily":
+				nextBaseTime = nextBaseTime.AddDate(0, 0, 1)
+			case "weekly":
+				nextBaseTime = nextBaseTime.AddDate(0, 0, 7)
+			case "monthly":
+				nextBaseTime = nextBaseTime.AddDate(0, 1, 0)
+			case "yearly":
+				nextBaseTime = nextBaseTime.AddDate(1, 0, 0)
+			}
+			
+			// 重新计算实际触发时间
+			actualNextTime = nextBaseTime
+			if notepad.RemindAdvanceDays > 0 {
+				actualNextTime = nextBaseTime.AddDate(0, 0, -notepad.RemindAdvanceDays)
+			}
 		}
 		
 		// 更新数据库
 		global.Db.Model(&notepad).Updates(map[string]interface{}{
-			"remind_time": nextTime.Format("2006-01-02T15:04:05"),
+			"remind_base_time": timeStr, // 保持基准时间不变
+			"remind_time": actualNextTime.Format("2006-01-02T15:04:05"),
 			"remind_status": 0, // 重置为等待触发
 		})
 		
-		log.Printf("[提醒确认] 重复提醒已确认，下次提醒: ID=%d, NextTime=%s", notepad.ID, nextTime.Format("2006-01-02T15:04:05"))
+		log.Printf("[提醒确认] 重复提醒已确认，基准时间=%s, 下次实际触发=%s, ID=%d", 
+			timeStr, actualNextTime.Format("2006-01-02T15:04:05"), notepad.ID)
 	}
 	
 	apiReturn.Success(c)

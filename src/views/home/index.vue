@@ -236,19 +236,14 @@ const showRemindNotification = (note: any) => {
   const id = Date.now() // 生成一个前端展示用的唯一 ID
   
   // 计算实际提醒时间用于显示
+  // remindTime 已经是后端计算好的实际触发时间，直接使用
   let displayTime = note.remindTime
-  if (note.remindAdvanceDays && note.remindAdvanceDays > 0 && note.remindTime) {
-    const baseTime = new Date(note.remindTime)
-    const actualTime = new Date(baseTime)
-    actualTime.setDate(actualTime.getDate() - note.remindAdvanceDays)
-    displayTime = actualTime.toISOString()
-  }
   
   const notification: RemindNotification = {
     id,
     noteId: note.id,
     title: note.title || '无标题',
-    time: new Date(displayTime).toLocaleString('zh-CN'),
+    time: displayTime ? new Date(displayTime).toLocaleString('zh-CN') : '',
     visible: true,
     remindForce: note.remindForce || 0,
     remindRepeat: note.remindRepeat || 'none'

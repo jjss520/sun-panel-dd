@@ -83,10 +83,12 @@ func (rc *RemindChecker) checkDueReminds() {
 	
 	// 只查询在线用户的便签
 	// 包括：等待触发的(status=0) + 待确认的(status=1，用于强制提醒轮询)
+	log.Printf("[提醒检查器] 查询条件: user_id IN %v, remind_status IN (0, 1)", userIDs)
 	if err := rc.db.Where("user_id IN ? AND remind_time IS NOT NULL AND remind_time != '' AND remind_status IN (0, 1)", userIDs).Find(&notepads).Error; err != nil {
 		log.Printf("[提醒检查器] 查询失败: %v", err)
 		return
 	}
+	log.Printf("[提醒检查器] 查询结果: %d 个便签", len(notepads))
 
 	now := time.Now().Add(2 * time.Second)
 	log.Printf("[提醒检查器] 检查 %d 个便签，当前时间: %s", len(notepads), now.Format("2006-01-02 15:04:05"))
