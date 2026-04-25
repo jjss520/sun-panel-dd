@@ -1880,8 +1880,14 @@ html {
   width: 100%;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr));
-  gap: 2px;
+  gap: 16px;
 
+}
+
+/* 修复 Grid 子项截断问题 */
+.icon-info-box > div {
+  min-width: 0; /* 允许 Grid 子项收缩 */
+  overflow: visible; /* 确保内容不被裁剪 */
 }
 
 .icon-small-box {
@@ -1895,7 +1901,7 @@ html {
 /* 响应式图标块布局 */
 @media (max-width: 1024px) {
   .icon-info-box {
-    grid-template-columns: repeat(auto-fill, minmax(min(160px, 100%), 1fr));
+    grid-template-columns: repeat(2, 1fr);
     gap: 14px;
   }
 
@@ -1908,7 +1914,7 @@ html {
 /* 响应式图标块布局 - 继续使用grid布局，但减小最小宽度 */
 @media (max-width: 768px) {
   .icon-info-box {
-    grid-template-columns: repeat(auto-fill, minmax(min(100px, 100%), 1fr));
+    grid-template-columns: repeat(2, 1fr);
     gap: 12px;
   }
 
@@ -1920,7 +1926,7 @@ html {
 
 @media (max-width: 480px) {
   .icon-info-box {
-    grid-template-columns: repeat(auto-fill, minmax(min(100px, 100%), 1fr));
+    grid-template-columns: repeat(2, 1fr);
     gap: 10px;
   }
 
@@ -1932,7 +1938,7 @@ html {
 
 @media (max-width: 360px) {
   .icon-info-box {
-    grid-template-columns: repeat(auto-fill, minmax(min(100px, 100%), 1fr));
+    grid-template-columns: repeat(2, 1fr);
     gap: 8px;
   }
 
