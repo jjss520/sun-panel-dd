@@ -112,6 +112,11 @@ onMounted(() => {
                 </div>
               </template>
               <template #footer>
+                <!-- 文件类型标签 -->
+                <div class="mb-1">
+                  <span v-if="item.fileType === 'wallpaper'" class="text-xs text-green-600 dark:text-green-400">🖼️ 壁纸</span>
+                  <span v-else class="text-xs text-blue-600 dark:text-blue-400">📄 便签</span>
+                </div>
                 <span class="text-xs">
                   <NEllipsis>
                     {{ item.fileName }}

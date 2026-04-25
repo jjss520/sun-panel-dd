@@ -72,7 +72,18 @@ function handleUploadBackgroundFinish({
   event?: ProgressEvent
 }) {
   const res = JSON.parse((event?.target as XMLHttpRequest).response)
-  panelState.panelConfig.backgroundImageSrc = res.data.imageUrl
+  if (res.code === 0) {
+    // 上传成功后，关闭 BING 壁纸和网络壁纸开关
+    panelState.panelConfig.useBingWallpaper = false
+    panelState.panelConfig.autoNetworkWallpaper = false
+    
+    // 设置上传的壁纸为当前背景
+    panelState.panelConfig.backgroundImageSrc = res.data.imageUrl
+    
+    ms.success('壁纸上传成功')
+  } else {
+    ms.error(`上传失败: ${res.msg}`)
+  }
   return file
 }
 
@@ -257,7 +268,7 @@ function resetPanelConfig() {
         {{ $t('apps.baseSettings.wallpaper') }}
       </div>
       <NUpload
-        action="/api/file/uploadImg"
+        action="/api/file/uploadWallpaper"
         :show-file-list="false"
         name="imgfile"
         :headers="{

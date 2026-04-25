@@ -46,9 +46,10 @@ func DownloadBingWallpaper() error {
 
 	imageURL := "https://www.bing.com" + wallpaperResp.Images[0].URL
 	
-	configUpload := global.Config.GetValueStringOrDefault("base", "upload_path")
+	// 统一使用 source_path 配置
+	configUpload := global.Config.GetValueStringOrDefault("base", "source_path")
 	if configUpload == "" {
-		configUpload = "./uploads"
+		configUpload = "./files"
 	}
 
 	// 创建壁纸目录

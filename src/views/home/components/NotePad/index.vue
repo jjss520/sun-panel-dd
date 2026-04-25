@@ -95,7 +95,9 @@
               contenteditable="true"
               @input="handleInput"
               @paste="handlePaste"
-              placeholder="请输入笔记内容"
+              @drop="handleDrop"
+              @dragover="handleDragOver"
+              placeholder="请输入笔记内容，或拖拽文件到这里"
             ></div>
 
             <!-- 底部信息 -->
@@ -221,6 +223,7 @@ import {
     getNotepadList, 
     saveNotepadContent,
     deleteNotepad,
+    uploadNotepadFile,
     type NotepadInfo 
 } from '@/api/panel/notepad'
 import { useAuthStore } from '@/store/modules/auth'
@@ -343,10 +346,96 @@ const handleInput = () => {
 }
 
 // 粘贴处理
-const handlePaste = (e: ClipboardEvent) => {
+const handlePaste = async (e: ClipboardEvent) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    
+    // 检查是否有图片
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+            e.preventDefault()
+            const file = items[i].getAsFile()
+            if (file) {
+                await uploadAndInsertImage(file)
+            }
+            return
+        }
+    }
+    
+    // 纯文本粘贴
     e.preventDefault()
     const text = e.clipboardData?.getData('text/plain') || ''
     document.execCommand('insertText', false, text)
+}
+
+// 拖拽覆盖事件
+const handleDragOver = (e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+}
+
+// 拖拽放下事件
+const handleDrop = async (e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    const files = e.dataTransfer?.files
+    if (!files || files.length === 0) return
+    
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        // 只处理图片文件
+        if (file.type.startsWith('image/')) {
+            await uploadAndInsertImage(file)
+        } else {
+            // 其他文件插入下载链接
+            await insertFileLink(file)
+        }
+    }
+}
+
+// 上传图片并插入到编辑器
+const uploadAndInsertImage = async (file: File) => {
+    try {
+        const formData = new FormData()
+        formData.append('file', file)
+        
+        const res = await uploadNotepadFile(formData)
+        if (res.code === 0 && res.data) {
+            const imgHtml = `<img src="${res.data.url}" alt="${res.data.name}" style="max-width:100%;height:auto;margin:8px 0;" />`
+            if (editorRef.value) {
+                editorRef.value.focus()
+                document.execCommand('insertHTML', false, imgHtml)
+                saveContent()
+            }
+            message.success('图片上传成功')
+        }
+    } catch (error) {
+        console.error('Upload image error:', error)
+        message.error('图片上传失败')
+    }
+}
+
+// 插入文件链接
+const insertFileLink = async (file: File) => {
+    try {
+        const formData = new FormData()
+        formData.append('file', file)
+        
+        const res = await uploadNotepadFile(formData)
+        if (res.code === 0 && res.data) {
+            const linkHtml = `<a href="${res.data.url}" class="file-attachment" data-filename="${res.data.name}" style="color:#007aff;text-decoration:none;display:inline-flex;align-items:center;gap:4px;padding:4px 8px;background:#f5f5f7;border-radius:6px;margin:4px 0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>${res.data.name}</a>`
+            if (editorRef.value) {
+                editorRef.value.focus()
+                document.execCommand('insertHTML', false, linkHtml)
+                saveContent()
+            }
+            message.success('文件上传成功')
+        }
+    } catch (error) {
+        console.error('Upload file error:', error)
+        message.error('文件上传失败')
+    }
 }
 
 // 核心保存逻辑（只保存便签内容，不保存提醒设置）

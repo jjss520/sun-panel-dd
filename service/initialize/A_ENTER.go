@@ -142,6 +142,9 @@ func DatabaseConnect() {
 
 	database.NotFoundAndCreateUser(global.Db)
 	database.NotFoundAndCreateSearchEngines(global.Db)
+	
+	// 自动迁移：为 files 表添加 file_type 字段（如果不存在）
+	MigrateFileTypeField()
 }
 
 // 命令行运行
@@ -211,4 +214,32 @@ func Logo() {
 	fmt.Println("Welcome to the Sun-Panel-v2.")
 	fmt.Println("Project address:", "https://github.com/jjss520/sun-panel-dd")
 
+}
+
+// MigrateFileTypeField 自动迁移：为 files 表添加 file_type 字段
+func MigrateFileTypeField() {
+	global.Logger.Info("Checking if file_type column exists in files table...")
+	
+	// 检查字段是否存在
+	var count int64
+	err := global.Db.Raw(`
+		SELECT COUNT(*) FROM pragma_table_info('files') WHERE name='file_type'
+	`).Count(&count).Error
+	
+	if err != nil {
+		global.Logger.Warn("Failed to check file_type column:", err)
+		return
+	}
+	
+	if count == 0 {
+		// 字段不存在，执行迁移
+		global.Logger.Info("Adding file_type column to files table...")
+		if err := global.Db.Exec("ALTER TABLE files ADD COLUMN file_type VARCHAR(20) DEFAULT 'notepad'").Error; err != nil {
+			global.Logger.Error("Failed to add file_type column:", err)
+			return
+		}
+		global.Logger.Info("Successfully added file_type column to files table")
+	} else {
+		global.Logger.Info("file_type column already exists, skipping migration")
+	}
 }

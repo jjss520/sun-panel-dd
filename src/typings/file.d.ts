@@ -6,6 +6,7 @@ declare namespace File {
 		fileName: string
 		method: number
 		ext: string
+		fileType?: string // 文件类型: notepad/wallpaper
 	}
 
 

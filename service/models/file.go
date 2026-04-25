@@ -7,6 +7,7 @@ type File struct {
 	FileName string `json:"fileName" gorm:"varchar(255)"` // 文件名
 	Method   int    `gorm:"int(5)" json:"method"`         // 上传方式
 	Ext      string `gorm:"varchar(255)" json:"ext"`      // 扩展名
+	FileType string `gorm:"varchar(20);default:'notepad'" json:"fileType"` // 文件类型: notepad/wallpaper
 }
 
 // 添加一个文件记录

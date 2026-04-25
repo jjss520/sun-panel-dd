@@ -89,6 +89,74 @@ func (a *FileApi) UploadImg(c *gin.Context) {
 	})
 }
 
+// UploadWallpaper 上传壁纸（保存到文件系统）
+func (a *FileApi) UploadWallpaper(c *gin.Context) {
+	userInfo, _ := base.GetCurrentUserInfo(c)
+	configUpload := global.Config.GetValueString("base", "source_path")
+
+	// 获取上传的文件
+	f, err := c.FormFile("imgfile")
+	if err != nil {
+		apiReturn.ErrorByCode(c, 1300)
+		return
+	}
+
+	// 检查文件类型（只允许图片）
+	fileExt := strings.ToLower(path.Ext(f.Filename))
+	agreeExts := []string{".png", ".jpg", ".jpeg", ".webp", ".gif"}
+	if !strings.Contains(strings.Join(agreeExts, "|"), fileExt) {
+		apiReturn.ErrorByCode(c, 1301)
+		return
+	}
+
+	// 检查文件大小（限制 10MB）
+	if f.Size > 10*1024*1024 {
+		apiReturn.ErrorByCode(c, 1302) // 文件过大
+		return
+	}
+
+	// 生成唯一文件名
+	fileName := fmt.Sprintf("wallpaper_%d_%s%s",
+		userInfo.ID,
+		time.Now().Format("20060102_150405"),
+		fileExt)
+
+	// 创建壁纸目录
+	wallpaperDir := fmt.Sprintf("%s/wallpapers/user_%d/", configUpload, userInfo.ID)
+	if exists, _ := cmn.PathExists(wallpaperDir); !exists {
+		os.MkdirAll(wallpaperDir, os.ModePerm)
+	}
+
+	filepath := fmt.Sprintf("%s%s", wallpaperDir, fileName)
+
+	// 保存文件
+	if err := c.SaveUploadedFile(f, filepath); err != nil {
+		apiReturn.ErrorByCode(c, 1300)
+		return
+	}
+
+	// 记录到数据库
+	mFile := models.File{}
+	mFile.UserId = userInfo.ID
+	mFile.FileName = f.Filename
+	mFile.Ext = fileExt
+	// 保存完整路径，与便签文件保持一致
+	mFile.Src = filepath
+	mFile.FileType = "wallpaper"
+
+	if err := global.Db.Create(&mFile).Error; err != nil {
+		global.Logger.Warn("Failed to save wallpaper record:", err)
+		// 即使数据库记录失败，文件已上传，仍然返回成功
+	}
+
+	// 返回相对路径（前端访问用，去掉开头的 "./"）
+	relativePath := filepath[2:] // 去掉 "./"
+
+	apiReturn.SuccessData(c, gin.H{
+		"imageUrl": relativePath, // 不加前缀 /，让前端自己处理
+	})
+}
+
 func (a *FileApi) UploadFiles(c *gin.Context) {
 	userInfo, _ := base.GetCurrentUserInfo(c)
 	configUpload := global.Config.GetValueString("base", "source_path")
@@ -139,12 +207,13 @@ func (a *FileApi) GetList(c *gin.Context) {
 	data := []map[string]interface{}{}
 	for _, v := range list {
 		data = append(data, map[string]interface{}{
-			"src":        v.Src[1:],
+			"src":        v.Src[2:], // 去掉 "./"
 			"fileName":   v.FileName,
 			"id":         v.ID,
 			"createTime": v.CreatedAt,
 			"updateTime": v.UpdatedAt,
 			"path":       v.Src,
+			"fileType":   v.FileType, // 添加文件类型
 		})
 	}
 	apiReturn.SuccessListData(c, data, count)
