@@ -220,9 +220,31 @@ func Logo() {
 func MigrateFileTypeField() {
 	global.Logger.Info("Checking if file_type column exists in files table...")
 	
-	// 检查字段是否存在
-	var count int64
+	// 先检查 files 表是否存在
+	var tableCount int64
 	err := global.Db.Raw(`
+		SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='files'
+	`).Count(&tableCount).Error
+	
+	if err != nil {
+		global.Logger.Warn("Failed to check files table:", err)
+		return
+	}
+	
+	if tableCount == 0 {
+		// 表不存在，创建表（AutoMigrate 会包含所有字段）
+		global.Logger.Info("files table does not exist, creating it with AutoMigrate...")
+		if err := global.Db.AutoMigrate(&models.File{}); err != nil {
+			global.Logger.Error("Failed to create files table:", err)
+			return
+		}
+		global.Logger.Info("Successfully created files table with all fields")
+		return
+	}
+	
+	// 表存在，检查字段是否存在
+	var count int64
+	err = global.Db.Raw(`
 		SELECT COUNT(*) FROM pragma_table_info('files') WHERE name='file_type'
 	`).Count(&count).Error
 	
