@@ -206,6 +206,7 @@ async function exportNotepads(): Promise<import('@/utils/jsonImportExport').Note
       return response.data.map((item: NotepadInfo) => ({
         title: item.title,
         content: item.content,
+        remindBaseTime: item.remindBaseTime || null,  // 基准时间（用户原始选择的时间）
         remindTime: item.remindTime || null,
         remindStatus: item.remindStatus || 0,
         remindRepeat: item.remindRepeat || 'none',
