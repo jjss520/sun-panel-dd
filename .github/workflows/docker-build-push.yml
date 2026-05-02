@@ -43,10 +43,10 @@ jobs:
           pnpm run type-check
           pnpm run build
 
-      # 读取版本信息（保持不变）
-      - name: Read version from file
-        id: read_version
-        run: echo "APP_VERSION=$(cut -d '|' -f 2 ./service/assets/version)" >> $GITHUB_ENV
+      # 使用 Git 标签名作为版本号
+      - name: Get version from tag
+        id: get_version
+        run: echo "APP_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
       # Docker 构建相关步骤（保持不变）
       - name: Set up QEMU
