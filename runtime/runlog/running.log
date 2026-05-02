@@ -10,3 +10,19 @@
 2026-05-02T16:56:20.299+0800	INFO	initialize/updateIconBase64.go:342	Bookmark icon_json update completed. Updated:0Skipped:0Errors:0
 2026-05-02T16:56:20.300+0800	INFO	initialize/updateIconBase64.go:79	Icon update completed. Updated:0Skipped:0Errors:0
 2026-05-02T16:56:20.301+0800	INFO	initialize/updateIconBase64.go:270	Bookmark parent_id update completed.
+2026-05-02T16:56:51.816+0800	INFO	lang/lang.go:20	输出语言文件: lang/zh-cn.ini
+2026-05-02T16:56:51.834+0800	INFO	initialize/A_ENTER.go:145	DATABASE CONNECTED: [sqlite] at path [/data/database/database.db]
+2026-05-02T16:56:53.519+0800	INFO	initialize/A_ENTER.go:228	Checking if file_type column exists in files table...
+2026-05-02T16:56:53.522+0800	INFO	initialize/A_ENTER.go:243	files table does not exist, creating it with AutoMigrate...
+2026-05-02T16:56:53.526+0800	INFO	initialize/A_ENTER.go:248	Successfully created files table with all fields
+2026-05-02T16:56:53.526+0800	INFO	router/A_ENTER.go:42	Sun-Panel is Started.  Listening and serving HTTP on :3002
+2026-05-02T16:56:58.531+0800	INFO	initialize/updateIconBase64.go:21	Start updating non-base64 icons...
+2026-05-02T16:56:58.531+0800	INFO	initialize/updateIconBase64.go:184	Start updating bookmark parent_id...
+2026-05-02T16:56:58.531+0800	INFO	initialize/updateIconBase64.go:275	Start updating bookmark icon_json for empty values...
+2026-05-02T16:56:58.554+0800	INFO	initialize/updateIconBase64.go:79	Icon update completed. Updated:0Skipped:42Errors:0
+2026-05-02T16:56:58.561+0800	INFO	initialize/updateIconBase64.go:342	Bookmark icon_json update completed. Updated:0Skipped:0Errors:0
+2026-05-02T16:56:58.564+0800	INFO	initialize/updateIconBase64.go:270	Bookmark parent_id update completed.
+2026-05-02T16:57:36.589+0800	INFO	system/login.go:57	DEBUG LOGIN: Received Username=[admin], Password=[123456], PasswordLength=6, TargetHash=[c56d0e9a7ccec67b4ea131655038d604]
+2026-05-02T16:57:36.592+0800	INFO	system/login.go:64	DEBUG LOGIN: User [admin] found in DB. StoredHash=[c56d0e9a7ccec67b4ea131655038d604]
+2026-05-02T16:57:36.595+0800	INFO	system/login.go:82	DEBUG LOGIN: GetUserInfo SUCCESS. Found ID=[1], Status=[1]
+2026-05-02T16:57:36.595+0800	INFO	system/login.go:119	DEBUG LOGIN: ALL STEPS COMPLETE. Returning SuccessData for [admin]. Token=[ffca6687-4...]
