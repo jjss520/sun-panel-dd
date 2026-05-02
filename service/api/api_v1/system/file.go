@@ -92,7 +92,7 @@ func (a *FileApi) UploadImg(c *gin.Context) {
 // UploadWallpaper 上传壁纸（保存到文件系统）
 func (a *FileApi) UploadWallpaper(c *gin.Context) {
 	userInfo, _ := base.GetCurrentUserInfo(c)
-	configUpload := global.Config.GetValueString("base", "source_path")
+	configUpload := global.Config.GetValueStringOrDefault("base", "source_path")
 
 	// 获取上传的文件
 	f, err := c.FormFile("imgfile")
@@ -149,17 +149,15 @@ func (a *FileApi) UploadWallpaper(c *gin.Context) {
 		// 即使数据库记录失败，文件已上传，仍然返回成功
 	}
 
-	// 返回相对路径（前端访问用，去掉开头的 "./"）
-	relativePath := filepath[2:] // 去掉 "./"
-
+	// 返回完整路径（前端直接使用）
 	apiReturn.SuccessData(c, gin.H{
-		"imageUrl": relativePath, // 不加前缀 /，让前端自己处理
+		"imageUrl": filepath,
 	})
 }
 
 func (a *FileApi) UploadFiles(c *gin.Context) {
 	userInfo, _ := base.GetCurrentUserInfo(c)
-	configUpload := global.Config.GetValueString("base", "source_path")
+	configUpload := global.Config.GetValueStringOrDefault("base", "source_path")
 
 	form, err := c.MultipartForm()
 	if err != nil {
@@ -185,7 +183,7 @@ func (a *FileApi) UploadFiles(c *gin.Context) {
 			// 像数据库添加记录
 			mFile := models.File{}
 			mFile.AddFile(userInfo.ID, f.Filename, fileExt, filepath)
-			succMap[f.Filename] = filepath[1:]
+			succMap[f.Filename] = filepath
 		}
 	}
 
@@ -207,7 +205,7 @@ func (a *FileApi) GetList(c *gin.Context) {
 	data := []map[string]interface{}{}
 	for _, v := range list {
 		data = append(data, map[string]interface{}{
-			"src":        v.Src[2:], // 去掉 "./"
+			"src":        v.Src,
 			"fileName":   v.FileName,
 			"id":         v.ID,
 			"createTime": v.CreatedAt,

@@ -106,8 +106,8 @@ function handleBingWallpaperChange(value: boolean) {
     // 关闭"自动获取网络壁纸"开关（互斥）
     panelState.panelConfig.autoNetworkWallpaper = false
     
-    // 设置固定路径
-    const bingPath = '/uploads/wallpapers/bing/bing_wallpaper.jpg'
+    // 设置固定路径（与后端下载路径保持一致）
+    const bingPath = '/data/uploads/wallpapers/bing/bing_wallpaper.jpg'
     panelState.panelConfig.backgroundImageSrc = bingPath
     
     // 提示用户
