@@ -51,11 +51,11 @@ RUN rm -f bindata.go assets/bindata.go \
 # run_image
 FROM docker.m.daocloud.io/alpine:latest
 
-WORKDIR /data
+WORKDIR /app
 
-COPY --from=web_image /build/dist /data/web
+COPY --from=web_image /build/dist /app/web
 
-COPY --from=server_image /build/sun-panel /data/sun-panel
+COPY --from=server_image /build/sun-panel /app/sun-panel
 
 # 中国国内源
 # RUN sed -i "s@dl-cdn.alpinelinux.org@mirrors.aliyun.com@g" /etc/apk/repositories

@@ -1,0 +1,19 @@
+name: "Sun-Panel (原生适配版)"
+version: "v1.3.5"
+slug: "sun_panel_dd"
+description: "Sun-Panel v1.3.5，镜像原生读写 /data 目录，完美适配 HAOS。"
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: auto
+cpu: 0.5
+memory: 512
+image: "ghcr.io/jjss520/sun-panel-dd"
+ports:
+  "3002/tcp": 3002
+map:
+  - share:rw
+  - config:rw
+environment:
+  TZ: "Asia/Shanghai"

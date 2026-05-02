@@ -32,6 +32,13 @@ var DB_DRIVER = database.SQLITE
 
 func InitApp() error {
 	Logo()
+	
+	// 创建必要的数据目录
+	os.MkdirAll("/data/conf", 0755)
+	os.MkdirAll("/data/database", 0755)
+	os.MkdirAll("/data/uploads", 0755)
+	os.MkdirAll("/data/runtime", 0755)
+	
 	gin.SetMode(global.RUNCODE) // GIN 运行模式
 
 	// 日志
@@ -162,9 +169,9 @@ func CommandRun() {
 	if cfg {
 		// 生成配置文件
 		fmt.Println("Generating configuration file")
-		cmn.AssetsTakeFileToPath("conf.example.ini", "conf/conf.example.ini")
-		cmn.AssetsTakeFileToPath("conf.example.ini", "conf/conf.ini")
-		fmt.Println("The configuration file has been created  conf/conf.ini ", "Please modify according to your own needs")
+		cmn.AssetsTakeFileToPath("conf.example.ini", "/data/conf/conf.example.ini")
+		cmn.AssetsTakeFileToPath("conf.example.ini", "/data/conf/conf.ini")
+		fmt.Println("The configuration file has been created  /data/conf/conf.ini ", "Please modify according to your own needs")
 		os.Exit(0) // 务必退出
 	} else if pwd {
 		// 重置密码
