@@ -49,7 +49,7 @@ func DownloadBingWallpaper() error {
 	// 统一使用 source_path 配置
 	configUpload := global.Config.GetValueStringOrDefault("base", "source_path")
 	if configUpload == "" {
-		configUpload = "./files"
+		configUpload = "/data/uploads"
 	}
 
 	// 创建壁纸目录

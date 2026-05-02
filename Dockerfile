@@ -65,6 +65,7 @@ EXPOSE 3002
 RUN apk add --no-cache bash ca-certificates su-exec tzdata \
     && chmod +x ./sun-panel \
     && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
-    && echo "Asia/Shanghai" > /etc/timezone
+    && echo "Asia/Shanghai" > /etc/timezone \
+    && mkdir -p /data/conf /data/database /data/uploads /data/runtime
 
 CMD ["./sun-panel"]
