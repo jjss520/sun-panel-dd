@@ -35,9 +35,14 @@ func InitRouters(addr string) error {
 		router.StaticFile("/favicon.svg", webPath+"/favicon.svg")
 	}
 
-	// 上传的文件
+	// 上传的文件 - 支持多种路径格式
 	sourcePath := global.Config.GetValueString("base", "source_path")
-	router.Static(sourcePath[1:], sourcePath)
+
+	// 完整路径访问（推荐）
+	router.Static("/data/uploads", sourcePath)
+
+	// 短路径访问（兼容旧数据）
+	router.Static("/uploads", sourcePath)
 
 	global.Logger.Info("Sun-Panel is Started.  Listening and serving HTTP on ", addr)
 	return router.Run(addr)
