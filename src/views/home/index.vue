@@ -797,9 +797,11 @@ async function handleItemClick(itemGroupIndex: number, item: Panel.ItemInfo) {
     return
   }
 
-  // lan 模式：直接显示内网，不进行内网探测（复制 wan 逻辑）
+  // lan 模式：直接显示内网，不进行内网探测
   if (panelState.networkMode === PanelStateNetworkModeEnum.lan) {
-    openPage(item.openMethod, lanUrl, item.title)
+    // 如果内网网址为空，则使用外网网址
+    const targetUrl = isValidUrl(item.lanUrl) ? lanUrl : publicUrl
+    openPage(item.openMethod, targetUrl, item.title)
     return
   }
 
