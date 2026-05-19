@@ -81,8 +81,15 @@
             <!-- 顶部导航栏 -->
             <div class="mobile-editor-header">
               <div class="nav-left">
-                <SvgIcon class="back-icon" icon="mdi:arrow-left" @click="goBack" />
-                <h1 class="mobile-editor-title">{{ currentNote.title || '无标题' }}</h1>
+                <input 
+                  v-if="isEditingTitle" 
+                  v-model="editingTitleValue" 
+                  class="mobile-editor-title-input"
+                  @blur="saveMobileTitle"
+                  @keyup.enter="saveMobileTitle"
+                  @click.stop
+                />
+                <h1 v-else class="mobile-editor-title" @click="startMobileEditing">{{ currentNote.title || '无标题' }}</h1>
               </div>
               <SvgIcon class="close-icon" icon="material-symbols--close" @click="handleClose" />
             </div>
@@ -222,7 +229,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { SvgIcon, SvgIconOnline } from '@/components/common'
 import { useMessage, useDialog, NDatePicker } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -262,6 +269,8 @@ const showSortMenu = ref(false)
 const currentRepeatType = ref<string>('none')
 const currentAdvanceDays = ref<number>(0)
 const remindTimestamp = ref<number | null>(null)
+const isEditingTitle = ref(false) // 是否正在编辑标题
+const editingTitleValue = ref('') // 编辑中的标题值
 
 // 初始化
 onMounted(async () => {
@@ -281,24 +290,6 @@ const loadList = async () => {
     } catch (e) {
         console.error('Load list error', e)
     }
-}
-
-// 生成标题
-const generateTitle = (textContent?: string) => {
-    if (editorRef.value) {
-        const h1 = editorRef.value.querySelector('h1')
-        if (h1 && h1.innerText.trim()) {
-            return h1.innerText.trim()
-        }
-    }
-    const text = textContent !== undefined ? textContent : (editorRef.value?.innerText.trim() || '')
-    if (text) {
-        return text.substring(0, 10)
-    }
-    if (currentNote.value.id) {
-        return `便签${currentNote.value.id}` 
-    }
-    return `便签${noteList.value.length + 1}`
 }
 
 // 过滤列表
@@ -343,8 +334,7 @@ const formatLocalDateTime = (date: Date): string => {
 // 输入处理
 const handleInput = () => {
     if (!editorRef.value) return
-    const text = editorRef.value.innerText.trim()
-    currentNote.value.title = generateTitle(text)
+    // 只保存内容，不自动生成标题
     saveContent()
 }
 
@@ -405,7 +395,8 @@ const handleSave = async () => {
     }
     
     try {
-        const title = generateTitle(text)
+        // 使用当前标题，不自动生成
+        const title = currentNote.value.title || '无标题'
         const saveId = currentNote.value.id || 0
         
         const res = await saveNotepadContent({ 
@@ -427,6 +418,16 @@ const handleSave = async () => {
 
 const saveContent = useDebounceFn(handleSave, 1000)
 
+// 监听当前便签变化，同步到编辑器
+watch(() => currentNote.value, (newNote) => {
+    if (editorRef.value && newNote && currentView.value === 'editor') {
+        // 只在内容不同时才更新，避免光标跳动
+        if (editorRef.value.innerHTML !== newNote.content) {
+            editorRef.value.innerHTML = newNote.content || ''
+        }
+    }
+}, { deep: true })
+
 // 切换便签
 const selectNote = (note: NotepadInfo) => {
     currentNote.value = { ...note }
@@ -438,24 +439,70 @@ const selectNote = (note: NotepadInfo) => {
         currentNote.value.remindAdvanceDays = 0
     }
     
-    if (editorRef.value) {
-        editorRef.value.innerHTML = note.content || ''
-    }
-    
     // 切换到编辑视图
     currentView.value = 'editor'
+    
+    // 等待视图渲染后设置内容
+    nextTick(() => {
+        if (editorRef.value) {
+            editorRef.value.innerHTML = note.content || ''
+        }
+    })
 }
 
 // 新建便签
 const createNew = () => {
-    currentNote.value = { id: 0, title: `便签${noteList.value.length + 1}`, content: '' }
+    const finalTitle = `便签${noteList.value.length + 1}`
+    currentNote.value = { id: 0, title: finalTitle, content: '' }
     currentRepeatType.value = 'none'
     currentAdvanceDays.value = 0
-    if (editorRef.value) {
-        editorRef.value.innerHTML = ''
-        editorRef.value.focus()
-    }
     currentView.value = 'editor'
+    nextTick(() => {
+        if (editorRef.value) {
+            editorRef.value.innerHTML = ''
+            editorRef.value.focus()
+        }
+    })
+}
+
+// 开始编辑标题
+const startMobileEditing = (e?: Event) => {
+    if (e) {
+        e.stopPropagation()
+    }
+    isEditingTitle.value = true
+    editingTitleValue.value = currentNote.value.title || ''
+}
+
+// 保存移动端标题
+const saveMobileTitle = async () => {
+    const newTitle = editingTitleValue.value.trim() || '无标题'
+    
+    // 更新当前便签标题
+    currentNote.value.title = newTitle
+    
+    // 更新列表中的标题
+    if (currentNote.value.id) {
+        const index = noteList.value.findIndex(n => n.id === currentNote.value.id)
+        if (index !== -1) {
+            noteList.value[index].title = newTitle
+        }
+        
+        // 保存到后端
+        try {
+            await saveNotepadContent({
+                id: currentNote.value.id,
+                title: newTitle,
+                content: currentNote.value.content || ''
+            })
+        } catch (e) {
+            console.error('Save title error', e)
+            message.error('保存标题失败')
+        }
+    }
+    
+    isEditingTitle.value = false
+    editingTitleValue.value = ''
 }
 
 // 关闭
@@ -683,13 +730,23 @@ watch(() => props.visible, (val) => {
 })
 
 const initData = async () => {
+    // 先异步加载列表
     await loadList()
     
-    // 重置到列表视图
-    currentView.value = 'list'
-    
-    // 清空当前编辑的便签（避免显示旧数据）
-    currentNote.value = { id: 0, title: '', content: '' }
+    // 如果当前有正在编辑的便签（从PC端切换过来），保持编辑状态
+    if (currentNote.value.id && currentNote.value.content) {
+        // 已经有内容，直接进入编辑视图
+        currentView.value = 'editor'
+        nextTick(() => {
+            if (editorRef.value) {
+                editorRef.value.innerHTML = currentNote.value.content || ''
+            }
+        })
+    } else {
+        // 没有内容，显示列表
+        currentView.value = 'list'
+        currentNote.value = { id: 0, title: '', content: '' }
+    }
 }
 
 defineExpose({ refreshData: loadList })
@@ -702,6 +759,9 @@ defineExpose({ refreshData: loadList })
   left: 0;
   right: 0;
   bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh; /* iOS Safari 支持动态视口高度 */
   background: rgba(0, 0, 0, 0.3);
   z-index: 1000;
   display: flex;
@@ -713,8 +773,11 @@ defineExpose({ refreshData: loadList })
 .mobile-notepad-container {
   width: 100vw;
   height: 100vh;
+  height: 100dvh; /* iOS Safari 支持动态视口高度 */
   background: #fff;
   overflow: hidden;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .mobile-view {
@@ -735,6 +798,8 @@ defineExpose({ refreshData: loadList })
   border-bottom: 1px solid #e0e0e0;
   background: #f5f5f7;
   min-height: 56px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .header-actions {
@@ -746,7 +811,7 @@ defineExpose({ refreshData: loadList })
 .nav-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0;
   flex: 1;
 }
 
@@ -756,7 +821,6 @@ defineExpose({ refreshData: loadList })
   font-size: 24px;
   color: #007aff;
   cursor: pointer;
-  padding: 4px;
   min-width: 32px;
   min-height: 32px;
   display: flex;
@@ -772,6 +836,29 @@ defineExpose({ refreshData: loadList })
   }
 }
 
+.back-btn-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  touch-action: manipulation;
+  cursor: pointer;
+  
+  &:active {
+    opacity: 0.5;
+    background: rgba(0, 122, 255, 0.1);
+    border-radius: 4px;
+  }
+}
+
+.back-text {
+  font-size: 16px;
+  font-weight: 500;
+  color: #007aff;
+  white-space: nowrap;
+}
+
 .mobile-title,
 .mobile-editor-title,
 .mobile-remind-title {
@@ -782,6 +869,31 @@ defineExpose({ refreshData: loadList })
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  
+  &:active {
+    opacity: 0.7;
+  }
+}
+
+.mobile-editor-title-input {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1d1d1f;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 2px 4px;
+  border-radius: 4px;
+  width: 100%;
+  max-width: 200px;
+  
+  &:focus {
+    background: rgba(0, 122, 255, 0.1);
+  }
 }
 
 .confirm-btn {
@@ -918,16 +1030,25 @@ defineExpose({ refreshData: loadList })
 
 .delete-icon {
   color: #86868b;
-  font-size: 18px;
+  font-size: 20px;
   cursor: pointer;
   flex-shrink: 0;
+  min-width: 32px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   touch-action: manipulation;
+  transition: all 0.1s ease;
   
   &:active {
     color: #ff3b30;
     transform: scale(0.9);
+    background: rgba(255, 59, 48, 0.1);
+    border-radius: 4px;
   }
 }
 

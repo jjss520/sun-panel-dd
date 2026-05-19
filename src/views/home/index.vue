@@ -1485,7 +1485,7 @@ function getNetworkModeButtonIcon() {
       }"
     />
     <div class="mask" :style="{ backgroundColor: `rgba(0,0,0,${panelState.panelConfig.backgroundMaskNumber})` }" />
-    <div ref="scrollContainerRef" class="absolute w-full h-full overflow-auto">
+    <div ref="scrollContainerRef" class="absolute w-full h-full overflow-auto" style="touch-action: pan-y; -webkit-overflow-scrolling: touch;">
       <div
         class="p-2.5 mx-auto"
         :style="{
