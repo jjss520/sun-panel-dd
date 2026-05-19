@@ -134,7 +134,7 @@ const itemIconSize = computed(() => {
 .app-icon-small-container {
   display: inline-block;
   position: relative;
-  margin: 10px 5px; /* 移动端：上下 10px，左右 5px */
+  margin: 10px 0; /* 移动端：只保留上下间距，左右由 Grid gap 控制 */
 }
 
 /* 图标包装层 - 固定宽度，不受文字影响 */
@@ -180,7 +180,7 @@ const itemIconSize = computed(() => {
 /* PC 端增加上下间距 */
 @media (min-width: 1025px) {
   .app-icon-small-container {
-    margin: 14px 5px; /* PC 端：上下 14px，左右 5px */
+    margin: 14px 0; /* PC 端：只保留上下间距，左右由 Grid gap 控制 */
   }
 }
 

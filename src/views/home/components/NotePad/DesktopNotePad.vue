@@ -12,7 +12,7 @@
           :style="{ left: x + 'px', top: y + 'px' }"
         >
           <!-- 左侧列表 -->
-          <div class="notepad-sidebar">
+          <div ref="sidebarRef" class="notepad-sidebar">
             <!-- 顶部标题栏 -->
             <div class="sidebar-header">
               <h2 class="sidebar-title">备忘录</h2>
@@ -46,7 +46,15 @@
                 @click="selectNote(note)"
               >
                 <div class="note-item-header">
-                  <span class="note-item-title">{{ note.title || '无标题' }}</span>
+                  <input 
+                    v-if="editingNoteId === note.id" 
+                    v-model="editingTitle" 
+                    class="note-item-title-input"
+                    @blur="saveEditingTitle(note)"
+                    @keyup.enter="saveEditingTitle(note)"
+                    @click.stop
+                  />
+                  <span v-else class="note-item-title" @dblclick.stop="startEditing(note)">{{ note.title || '无标题' }}</span>
                   <!-- 提醒铃铛图标 -->
                   <SvgIconOnline 
                     v-if="note.remindTime && note.remindStatus !== 2" 
@@ -78,10 +86,18 @@
           </div>
 
           <!-- 右侧编辑区 -->
-          <div class="notepad-editor">
+          <div class="notepad-editor" @mousedown="preventEditorDrag">
             <!-- 编辑器顶部 -->
             <div class="editor-header">
-              <h1 class="editor-title">{{ currentNote.title || '无标题' }}</h1>
+              <input 
+                v-if="isEditingHeaderTitle" 
+                v-model="headerEditingTitle" 
+                class="editor-title-input"
+                @blur="saveHeaderTitle"
+                @keyup.enter="saveHeaderTitle"
+                @click.stop
+              />
+              <h1 v-else class="editor-title" @dblclick="startHeaderEditing">{{ currentNote.title || '无标题' }}</h1>
               <div class="editor-actions">
                 <!-- 关闭按钮 -->
                 <SvgIcon class="action-icon" icon="material-symbols--close" @click="handleClose" />
@@ -97,6 +113,7 @@
               @paste="handlePaste"
               @drop="handleDrop"
               @dragover="handleDragOver"
+              @mousedown.stop
               placeholder="请输入笔记内容，或拖拽文件到这里"
             ></div>
 
@@ -243,6 +260,7 @@ const dialog = useDialog()
 const authStore = useAuthStore()
 const editorRef = ref<HTMLDivElement | null>(null)
 const notepadRef = ref<HTMLElement | null>(null)
+const sidebarRef = ref<HTMLElement | null>(null)
 
 // 状态
 const currentNote = useStorage<Partial<NotepadInfo>>('sun-panel-notepad-current', { id: 0, title: '', content: '' })
@@ -252,16 +270,46 @@ const showSortMenu = ref(false)
 const showRemindPicker = ref(false)
 const currentRepeatType = ref<string>('none') // 当前选择的重复类型
 const currentAdvanceDays = ref<number>(0) // 当前提前提醒天数
+const editingNoteId = ref<number | null>(null) // 正在编辑的便签ID
+const editingTitle = ref('') // 编辑中的标题
+const isEditingHeaderTitle = ref(false) // 是否正在编辑顶部标题
+const headerEditingTitle = ref('') // 顶部标题编辑值
 
-// 窗口拖拽
+// 监听当前便签变化，同步到编辑器
+watch(() => currentNote.value, (newNote) => {
+    if (editorRef.value && newNote) {
+        // 只在内容不同时才更新，避免光标跳动
+        if (editorRef.value.innerHTML !== newNote.content) {
+            editorRef.value.innerHTML = newNote.content || ''
+            nextTick(() => {
+                bindFileDownloadEvents()
+            })
+        }
+    }
+}, { deep: true })
+
+// 阻止编辑器区域的拖动
+const preventEditorDrag = (e: MouseEvent) => {
+    e.stopPropagation()
+}
+
 const { x, y } = useDraggable(notepadRef, {
-  initialValue: { x: (window.innerWidth - 1000) / 2, y: (window.innerHeight - 600) / 2 }
+  initialValue: { x: (window.innerWidth - 1000) / 2, y: (window.innerHeight - 600) / 2 },
+  handle: sidebarRef // 只在左侧列表区域可以拖动
 })
 
 // 初始化
 onMounted(async () => {
     if (noteList.value.length === 0) {
         await loadList()
+    }
+    
+    // 阻止编辑器区域的拖动（使用原生事件监听）
+    const editorElement = document.querySelector('.notepad-editor')
+    if (editorElement) {
+        editorElement.addEventListener('mousedown', (e) => {
+            e.stopPropagation()
+        }, true) // 使用捕获阶段
     }
 })
 
@@ -276,24 +324,6 @@ const loadList = async () => {
     } catch (e) {
         console.error('Load list error', e)
     }
-}
-
-// 生成标题
-const generateTitle = (textContent?: string) => {
-    if (editorRef.value) {
-        const h1 = editorRef.value.querySelector('h1')
-        if (h1 && h1.innerText.trim()) {
-            return h1.innerText.trim()
-        }
-    }
-    const text = textContent !== undefined ? textContent : (editorRef.value?.innerText.trim() || '')
-    if (text) {
-        return text.substring(0, 10)
-    }
-    if (currentNote.value.id) {
-        return `便签${currentNote.value.id}` 
-    }
-    return `便签${noteList.value.length + 1}`
 }
 
 // 过滤列表
@@ -340,8 +370,7 @@ const formatLocalDateTime = (date: Date): string => {
 // 输入处理
 const handleInput = () => {
     if (!editorRef.value) return
-    const text = editorRef.value.innerText.trim()
-    currentNote.value.title = generateTitle(text)
+    // 只保存内容，不自动生成标题
     saveContent()
 }
 
@@ -443,8 +472,8 @@ const handleSave = async () => {
     if (editorRef.value) {
         try {
             const content = editorRef.value.innerHTML
-            const text = editorRef.value.innerText.trim()
-            const title = generateTitle(text)
+            // 使用当前标题，不自动生成
+            const title = currentNote.value.title || '无标题'
             const saveId = currentNote.value.id || 0
             
             // 只保存标题和内容，不传递提醒相关字段，避免覆盖数据库中的提醒设置
@@ -492,13 +521,88 @@ const selectNote = (note: NotepadInfo) => {
 
 // 新建便签
 const createNew = () => {
-    currentNote.value = { id: 0, title: `便签${noteList.value.length + 1}`, content: '' }
+    const finalTitle = `便签${noteList.value.length + 1}`
+    currentNote.value = { id: 0, title: finalTitle, content: '' }
     currentRepeatType.value = 'none'
     currentAdvanceDays.value = 0
     if (editorRef.value) {
         editorRef.value.innerHTML = ''
         editorRef.value.focus()
     }
+}
+
+// 开始编辑标题
+const startEditing = (note: NotepadInfo) => {
+    editingNoteId.value = note.id
+    editingTitle.value = note.title || ''
+}
+
+// 保存编辑的标题
+const saveEditingTitle = async (note: NotepadInfo) => {
+    const newTitle = editingTitle.value.trim() || '无标题'
+    
+    // 更新列表中的标题
+    const index = noteList.value.findIndex(n => n.id === note.id)
+    if (index !== -1) {
+        noteList.value[index].title = newTitle
+    }
+    
+    // 如果当前选中的是这个便签，也更新
+    if (currentNote.value.id === note.id) {
+        currentNote.value.title = newTitle
+    }
+    
+    // 保存到后端
+    try {
+        await saveNotepadContent({
+            id: note.id,
+            title: newTitle,
+            content: note.content || ''
+        })
+    } catch (e) {
+        console.error('Save title error', e)
+        message.error('保存标题失败')
+    }
+    
+    editingNoteId.value = null
+    editingTitle.value = ''
+}
+
+// 开始编辑顶部标题
+const startHeaderEditing = () => {
+    isEditingHeaderTitle.value = true
+    headerEditingTitle.value = currentNote.value.title || ''
+}
+
+// 保存顶部标题
+const saveHeaderTitle = async () => {
+    const newTitle = headerEditingTitle.value.trim() || '无标题'
+    
+    // 更新当前便签标题
+    currentNote.value.title = newTitle
+    
+    // 更新列表中的标题
+    if (currentNote.value.id) {
+        const index = noteList.value.findIndex(n => n.id === currentNote.value.id)
+        if (index !== -1) {
+            noteList.value[index].title = newTitle
+        }
+        
+        // 保存到后端
+        try {
+            await saveNotepadContent({
+                id: currentNote.value.id,
+                title: newTitle,
+                content: currentNote.value.content || ''
+            })
+        } catch (e) {
+            console.error('Save title error', e)
+            message.error('保存标题失败')
+        }
+    }
+    
+    isEditingHeaderTitle.value = false
+    headerEditingTitle.value = ''
 }
 
 // 关闭
@@ -892,6 +996,19 @@ const initData = async () => {
     await loadList()
     console.log('[NotePad] 列表加载完成，共', noteList.value.length, '个便签')
     
+    // 强制从 localStorage 重新读取 currentNote，确保获取最新值
+    const storedCurrentNote = localStorage.getItem('sun-panel-notepad-current')
+    if (storedCurrentNote) {
+        try {
+            const parsed = JSON.parse(storedCurrentNote)
+            console.log('[NotePad] 从 storage 读取到 currentNote:', parsed)
+            // 更新 currentNote.value
+            currentNote.value = parsed
+        } catch (e) {
+            console.error('[NotePad] 解析 currentNote 失败:', e)
+        }
+    }
+    
     // 如果有当前便签ID，从列表中查找并恢复
     if (currentNote.value.id && noteList.value.length > 0) {
         const savedNote = noteList.value.find(n => n.id === currentNote.value.id)
@@ -944,6 +1061,8 @@ const initData = async () => {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   display: flex;
   overflow: hidden;
+  user-select: none; /* 禁用拖拽时的文本选择 */
+  -webkit-user-select: none;
 }
 
 // 左侧列表
@@ -1049,6 +1168,22 @@ const initData = async () => {
   flex: 1;
 }
 
+.note-item-title-input {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1d1d1f;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 2px 4px;
+  border-radius: 4px;
+  width: 100%;
+  
+  &:focus {
+    background: rgba(0, 122, 255, 0.1);
+  }
+}
+
 .remind-icon {
   color: #86868b;
   font-size: 16px;
@@ -1110,6 +1245,7 @@ const initData = async () => {
   display: flex;
   flex-direction: column;
   position: relative;
+  pointer-events: auto; /* 确保编辑器区域处理自己的鼠标事件，避免被父级拖拽捕获 */
 }
 
 .editor-header {
@@ -1125,6 +1261,28 @@ const initData = async () => {
   font-weight: 600;
   color: #1d1d1f;
   margin: 0;
+  cursor: pointer;
+  
+  &:hover {
+    opacity: 0.7;
+  }
+}
+
+.editor-title-input {
+  font-size: 22px;
+  font-weight: 600;
+  color: #1d1d1f;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 2px 4px;
+  border-radius: 4px;
+  width: 100%;
+  max-width: 400px;
+  
+  &:focus {
+    background: rgba(0, 122, 255, 0.1);
+  }
 }
 
 .editor-actions {
@@ -1140,6 +1298,10 @@ const initData = async () => {
   font-size: 16px;
   line-height: 1.6;
   color: #1d1d1f;
+  user-select: text; /* 允许编辑器内选择文本 */
+  -webkit-user-select: text;
+  cursor: text;
+  pointer-events: auto; /* 确保编辑器处理自己的鼠标事件，避免被父级拖拽捕获 */
   
   &:empty:before {
     content: attr(placeholder);
