@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { VueDraggable } from 'vue-draggable-plus'
 import { NBackTop, NButton, NButtonGroup, NDropdown, NModal, NSkeleton, NSpin, useDialog, useMessage } from 'naive-ui'
-import { nextTick, onMounted, onActivated, onUnmounted, ref, h } from 'vue'
+import { nextTick, onMounted, onActivated, onUnmounted, ref, h, watch } from 'vue'
 import { AppIcon, AppStarter, EditItem, NotePad } from './components'
 import { Clock, SystemMonitor } from '@/components/deskModule'
 import SearchBoxWithSuggestions from '@/components/deskModule/SearchBoxWithSuggestions/index.vue'
@@ -1257,6 +1257,16 @@ onBeforeRouteUpdate(() => {
   // Reload bookmark tree when route is updated
   loadBookmarkTree(true)
 })
+
+// 监听 logoText 变化，同步更新网页标题
+watch(
+  () => panelState.panelConfig.logoText,
+  (newLogoText) => {
+    if (newLogoText) {
+      setTitle(newLogoText)
+    }
+  }
+)
 
 // 递归搜索书签树函数已被移除，搜索功能已迁移到SearchBoxWithSuggestions组件
 
