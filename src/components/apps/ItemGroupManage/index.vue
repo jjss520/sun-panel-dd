@@ -46,7 +46,7 @@ const groups = ref<Panel.ItemIconGroup[]>([])
 function handleAddGroup() {
   editModalArg.value.show = !editModalArg.value.show
   // Clear group list cache
-  ss.remove('GROUP_LIST_CACHE')
+  ss.remove('groupListCache')
 }
 
 function handleEditGroup(groupInfo: Panel.ItemIconGroup) {
@@ -72,7 +72,7 @@ function handleSaveSort() {
     if (code === 0) {
       ms.success(t('common.saveSuccess'))
       // 清除分组列表缓存
-      ss.remove('GROUP_LIST_CACHE')
+      ss.remove('groupListCache')
       sortStatus.value = false
     }
     else {
@@ -94,7 +94,7 @@ function handleDelete(groupInfo: Panel.ItemIconGroup) {
             ms.error(t('common.deleteFail'))
           else {
             // 清除分组列表缓存
-            ss.remove('GROUP_LIST_CACHE')
+            ss.remove('groupListCache')
             refreshList()
           }
         })
@@ -112,7 +112,7 @@ function handleSaveGroup() {
           ms.error(msg)
         
         // 清除分组列表缓存
-        ss.remove('GROUP_LIST_CACHE')
+        ss.remove('groupListCache')
         refreshList()
         editModalArg.value.show = false
         editModalArg.value.model = { ...defaultMNodal }

@@ -7,6 +7,7 @@ interface Prop {
   itemIcon?: Panel.ItemIcon | null
   size?: number // 默认70
   forceBackground?: string // 强制背景色
+  iconColor?: string // 图标颜色（用于 itemType === 1 文字头像）
 }
 
 const props = withDefaults(defineProps<Prop>(), { size: 70 })
@@ -25,6 +26,11 @@ const innerSize = computed(() => {
 const iconExt = computed(() => {
   return props.itemIcon?.src?.split('.').pop()
 })
+
+// 处理图标颜色，提供默认值
+const textColor = computed(() => {
+  return props.iconColor || '#ffffff'
+})
 </script>
 
 <template>
@@ -32,7 +38,7 @@ const iconExt = computed(() => {
     <slot>
       <template v-if="itemIcon">
         <template v-if="itemIcon?.itemType === 1">
-          <NAvatar :size="props.size" :style="{ backgroundColor: (forceBackground ?? itemIcon?.backgroundColor) || defaultBackground, borderRadius: '12px' }">
+          <NAvatar :size="props.size" :style="{ backgroundColor: (forceBackground ?? itemIcon?.backgroundColor) || defaultBackground, borderRadius: '12px' }" class="text-avatar">
             {{ itemIcon.text }}
           </NAvatar>
         </template>
@@ -57,3 +63,17 @@ const iconExt = computed(() => {
     </slot>
   </div>
 </template>
+
+<style scoped>
+.text-avatar {
+  color: v-bind(textColor) !important;
+}
+
+.text-avatar :deep(.n-avatar-text) {
+  color: v-bind(textColor) !important;
+}
+
+.text-avatar :deep(span) {
+  color: v-bind(textColor) !important;
+}
+</style>

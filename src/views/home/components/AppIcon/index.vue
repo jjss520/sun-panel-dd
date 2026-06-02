@@ -52,7 +52,7 @@ const itemIconSize = computed(() => {
       <!-- 图标 -->
       <div class="app-icon-info-icon">
         <div class="w-full h-full flex items-center justify-center ">
-          <ItemIcon :item-icon="itemInfo?.icon" force-background="transparent" :size="itemIconSize" class="overflow-hidden" style="border-radius: 1rem;" />
+          <ItemIcon :item-icon="itemInfo?.icon" :size="itemIconSize" :icon-color="iconTextColor" class="overflow-hidden" style="border-radius: 1rem;" />
         </div>
       </div>
 
@@ -81,7 +81,7 @@ const itemIconSize = computed(() => {
           class="app-icon-small-icon rounded-2xl sunpanel mx-auto rounded-2xl transition-all duration-200 pc-hover-effect"
           :title="itemInfo?.description"
         >
-          <ItemIcon :item-icon="itemInfo?.icon" force-background="transparent" :size="itemIconSize" style="border-radius: 1rem;" />
+          <ItemIcon :item-icon="itemInfo?.icon" :size="itemIconSize" :icon-color="iconTextColor" style="border-radius: 1rem;" />
         </div>
       </div>
       <!-- 文字层（绝对定位，不影响图标） -->

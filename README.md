@@ -96,4 +96,10 @@ docker run -d \
 
 ---
 
+## 更新日志
+
+查看完整更新日志：[UPDATELOG.md](./UPDATELOG.md)
+
+---
+
 [![Star History Chart](https://api.star-history.com/svg?repos=75412701/sun-panel-v2&type=Date)](https://star-history.com/#75412701/sun-panel-v2&Date)

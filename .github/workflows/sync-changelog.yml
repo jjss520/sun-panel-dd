@@ -1,0 +1,60 @@
+name: Sync Changelog to README
+
+on:
+  push:
+    paths:
+      - 'UPDATELOG.md'
+    branches:
+      - main
+
+jobs:
+  sync-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Sync changelog to README
+        run: |
+          # 提取 UPDATELOG.md 的前 50 行（最近的更新）
+          head -n 50 UPDATELOG.md > CHANGELOG_PREVIEW.md
+          
+          # 在 README.md 中找到 ## 更新日志 标记并替换内容
+          if grep -q "## 更新日志" README.md; then
+            # 如果已存在更新日志部分，替换它
+            awk '
+              /## 更新日志/ {
+                print $0
+                print ""
+                while ((getline line < "CHANGELOG_PREVIEW.md") > 0) {
+                  print line
+                }
+                close("CHANGELOG_PREVIEW.md")
+                skip = 1
+                next
+              }
+              /^## / && skip {
+                skip = 0
+              }
+              !skip {
+                print
+              }
+            ' README.md > README_NEW.md
+            mv README_NEW.md README.md
+          else
+            # 如果不存在，添加到末尾
+            echo "" >> README.md
+            echo "## 更新日志" >> README.md
+            echo "" >> README.md
+            cat CHANGELOG_PREVIEW.md >> README.md
+          fi
+          
+          rm CHANGELOG_PREVIEW.md
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add README.md
+          git commit -m "docs: 自动同步更新日志到 README" || exit 0
+          git push
