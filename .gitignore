@@ -61,5 +61,8 @@ fabric.properties
 /.idea/runConfigurations.xml
 /.idea/vcs.xml
 database/database.db
+*.db
 uploads/
 runtime/
+*.exe
+*.code-workspace
