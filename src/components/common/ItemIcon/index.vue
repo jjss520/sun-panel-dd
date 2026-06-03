@@ -13,8 +13,8 @@ interface Prop {
 const props = withDefaults(defineProps<Prop>(), { size: 70 })
 const defaultBackground = '#2a2a2a6b'
 const defaultStyle = ref({
-  width: '100%',
-  height: '100%',
+  width: `${props.size}px`,
+  height: `${props.size}px`,
 })
 
 // 计算内部元素的大小比例，使图标内容随外部尺寸等比缩放
@@ -34,24 +34,24 @@ const textColor = computed(() => {
 </script>
 
 <template>
-  <div class="item-icon" :style="defaultStyle" style="aspect-ratio: 1 / 1; overflow: hidden;">
+  <div class="item-icon" :style="defaultStyle">
     <slot>
       <template v-if="itemIcon">
         <template v-if="itemIcon?.itemType === 1">
-          <NAvatar :size="props.size" :style="{ backgroundColor: (forceBackground ?? itemIcon?.backgroundColor) || defaultBackground, borderRadius: '1rem' }" class="text-avatar">
+          <NAvatar :size="props.size" :style="{ backgroundColor: (forceBackground ?? itemIcon?.backgroundColor) || defaultBackground, borderRadius: '12px' }" class="text-avatar">
             {{ itemIcon.text }}
           </NAvatar>
         </template>
 
         <template v-else-if="itemIcon?.itemType === 2">
-          <div v-if="iconExt === 'svg'" :style="{ backgroundColor: (forceBackground ?? itemIcon?.backgroundColor) || defaultBackground, ...defaultStyle, borderRadius: '1rem' }" class="flex justify-center items-center">
-            <img :src="itemIcon?.src" :style="{ width: '100%', height: '100%', objectFit: 'contain' }">
+          <div v-if="iconExt === 'svg'" :style="{ backgroundColor: (forceBackground ?? itemIcon?.backgroundColor) || defaultBackground, ...defaultStyle, borderRadius: '12px' }" class="flex justify-center items-center">
+            <img :src="itemIcon?.src" :style="{ width: `${innerSize}px`, height: `${innerSize}px`, objectFit: 'contain' }">
           </div>
-          <NImage v-else :style="{ backgroundColor: (forceBackground ?? itemIcon?.backgroundColor) || defaultBackground, ...defaultStyle, borderRadius: '1rem' }" :src="itemIcon?.src" preview-disabled img-style="object-fit: contain; width: 100%; height: 100%;" />
+          <NImage v-else :style="{ backgroundColor: (forceBackground ?? itemIcon?.backgroundColor) || defaultBackground, ...defaultStyle, borderRadius: '12px' }" :src="itemIcon?.src" preview-disabled img-style="object-fit: contain" />
         </template>
 
         <template v-else-if="itemIcon?.itemType === 3">
-          <NAvatar :size="props.size" :style="{ backgroundColor: (forceBackground ?? itemIcon?.backgroundColor) || defaultBackground, borderRadius: '1rem' }">
+          <NAvatar :size="props.size" :style="{ backgroundColor: (forceBackground ?? itemIcon?.backgroundColor) || defaultBackground, borderRadius: '12px' }">
             <SvgIconOnline :style="{ fontSize: `${innerSize}px` }" :icon="itemIcon.text" />
           </NAvatar>
         </template>
