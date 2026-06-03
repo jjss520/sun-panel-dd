@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"sun-panel/api/api_v1/common/apiData/commonApiStructs"
 	"sun-panel/api/api_v1/common/apiReturn"
@@ -169,13 +170,18 @@ func (a *FileApi) UploadFiles(c *gin.Context) {
 	succMap := map[string]string{}
 	for _, f := range files {
 		fileExt := strings.ToLower(path.Ext(f.Filename))
-		fileName := cmn.Md5(fmt.Sprintf("%s%s", f.Filename, time.Now().String()))
+		// 保持原始文件名（使用时间戳避免重名）
+		timestamp := time.Now().UnixNano()
+		originalName := strings.TrimSuffix(f.Filename, fileExt)
+		fileName := fmt.Sprintf("%s_%d%s", originalName, timestamp, fileExt)
+		
+		// 按日期分类存储：uploads/年/月/日/
 		fildDir := fmt.Sprintf("%s/%d/%d/%d/", configUpload, time.Now().Year(), time.Now().Month(), time.Now().Day())
 		isExist, _ := cmn.PathExists(fildDir)
 		if !isExist {
 			os.MkdirAll(fildDir, os.ModePerm)
 		}
-		filepath := fmt.Sprintf("%s%s%s", fildDir, fileName, fileExt)
+		filepath := fmt.Sprintf("%s%s", fildDir, fileName)
 		if c.SaveUploadedFile(f, filepath) != nil {
 			errFiles = append(errFiles, f.Filename)
 		} else {
@@ -196,8 +202,31 @@ func (a *FileApi) UploadFiles(c *gin.Context) {
 func (a *FileApi) GetList(c *gin.Context) {
 	list := []models.File{}
 	userInfo, _ := base.GetCurrentUserInfo(c)
+	
+	// 获取路径筛选参数（可选）- 支持GET和POST
+	pathFilter := c.Query("path")
+	if pathFilter == "" {
+		// 尝试从 POST body 中获取
+		var req struct {
+			Path string `json:"path"`
+		}
+		if err := c.ShouldBindJSON(&req); err == nil && req.Path != "" {
+			pathFilter = req.Path
+		}
+	}
+	
 	var count int64
-	if err := global.Db.Order("created_at desc").Find(&list, "user_id=?", userInfo.ID).Count(&count).Error; err != nil {
+	var err error
+	
+	// 根据是否有路径筛选构建查询
+	if pathFilter != "" {
+		// 使用 LIKE 进行路径前缀匹配
+		err = global.Db.Order("created_at desc").Find(&list, "user_id=? AND src LIKE ?", userInfo.ID, pathFilter+"%").Count(&count).Error
+	} else {
+		err = global.Db.Order("created_at desc").Find(&list, "user_id=?", userInfo.ID).Count(&count).Error
+	}
+	
+	if err != nil {
 		apiReturn.ErrorDatabase(c, err.Error())
 		return
 	}
@@ -245,4 +274,52 @@ func (a *FileApi) Deletes(c *gin.Context) {
 
 	apiReturn.Success(c)
 
+}
+
+// DownloadFile 下载指定文件
+func (a *FileApi) DownloadFile(c *gin.Context) {
+	filePath := c.Query("path")
+	
+	// 验证路径参数
+	if filePath == "" {
+		apiReturn.ErrorByCode(c, 1400) // 参数错误
+		return
+	}
+	
+	// 安全检查：确保路径在允许的目录内
+	configUpload := global.Config.GetValueStringOrDefault("base", "source_path")
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		apiReturn.ErrorByCode(c, 1401)
+		return
+	}
+	
+	// 防止目录穿越攻击
+	if !strings.HasPrefix(absPath, configUpload) && 
+	   !strings.HasPrefix(absPath, "/data") {
+		apiReturn.ErrorByCode(c, 1402) // 非法路径
+		return
+	}
+	
+	// 检查文件是否存在
+	if exists, _ := cmn.PathExists(absPath); !exists {
+		apiReturn.ErrorByCode(c, 1403) // 文件不存在
+		return
+	}
+	
+	// 获取文件信息
+	fileInfo, err := os.Stat(absPath)
+	if err != nil {
+		apiReturn.ErrorByCode(c, 1404)
+		return
+	}
+	
+	// 如果是目录，返回错误
+	if fileInfo.IsDir() {
+		apiReturn.ErrorByCode(c, 1405) // 不能下载目录
+		return
+	}
+	
+	// 使用 c.File() 直接发送文件（它会自动设置正确的响应头）
+	c.File(absPath)
 }

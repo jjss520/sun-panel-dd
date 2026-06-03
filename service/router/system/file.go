@@ -19,7 +19,9 @@ func InitFileRouter(router *gin.RouterGroup) {
 
 		private.POST("/file/getList", FileApi.GetList)
 		private.POST("/file/deletes", FileApi.Deletes)
-
 	}
+	
+	// 下载接口不需要登录验证（公开访问）
+	router.GET("/file/download", FileApi.DownloadFile) // 下载单个文件
 
 }

@@ -33,6 +33,21 @@ func InitRouters(addr string) error {
 		router.Static("/custom", webPath+"/custom")
 		router.StaticFile("/favicon.ico", webPath+"/favicon.ico")
 		router.StaticFile("/favicon.svg", webPath+"/favicon.svg")
+		
+		// SPA fallback: 所有非API、非静态文件请求都返回 index.html
+		router.NoRoute(func(c *gin.Context) {
+			path := c.Request.URL.Path
+			// 如果是API请求或静态资源，返回404
+			if len(path) >= 4 && path[:4] == "/api" || 
+			   len(path) >= 8 && path[:8] == "/assets/" ||
+			   len(path) >= 8 && path[:8] == "/custom/" ||
+			   path == "/favicon.ico" || path == "/favicon.svg" {
+				c.String(http.StatusNotFound, "404 page not found")
+				return
+			}
+			// 其他情况返回 index.html（支持前端路由）
+			c.File(webPath + "/index.html")
+		})
 	}
 
 	// 上传的文件 - 支持多种路径格式

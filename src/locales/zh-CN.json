@@ -176,6 +176,13 @@
       "setWallpaper": "设置为壁纸",
       "uploadTime": "上传时间"
     },
+    "fileDownloader": {
+      "alertText": "点击文件即可下载",
+      "appName": "文件下载",
+      "nothingText": "暂无文件",
+      "allFiles": "全部文件",
+      "selectPath": "选择路径"
+    },
     "userInfo": {
       "appName": "我的信息",
       "theme": "主题",
@@ -254,6 +261,8 @@
     "unknownError": "未知错误",
     "upload": "上传",
     "uploadFail": "上传失败",
+    "uploadSuccess": "上传成功",
+    "uploading": "上传中...",
     "username": "账号",
     "verify": "验证",
     "warning": "警告",

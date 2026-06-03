@@ -128,6 +128,7 @@ const itemIconSize = computed(() => {
   height: min(70px, 100%);
   aspect-ratio: 1 / 1;
   border-radius: 1rem; /* rounded-2xl = 1rem */
+  overflow: hidden;
 }
 
 /* 小图标容器 */

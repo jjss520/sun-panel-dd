@@ -171,6 +171,13 @@
       "setWallpaper": "Set as wallpaper",
       "uploadTime": "Upload time"
     },
+    "fileDownloader": {
+      "alertText": "Click file to download",
+      "appName": "File Download",
+      "nothingText": "No files",
+      "allFiles": "All Files",
+      "selectPath": "Select Path"
+    },
     "userInfo": {
       "appName": "My Information",
       "theme": "Theme",
@@ -246,6 +253,8 @@
     "unknownError": "Unknown error",
     "upload": "Upload",
     "uploadFail": "Upload failed",
+    "uploadSuccess": "Upload successful",
+    "uploading": "Uploading...",
     "username": "Username",
     "verify": "Verify",
     "warning": "Warning",

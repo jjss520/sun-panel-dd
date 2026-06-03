@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { NAlert, NButton, NButtonGroup, NCard, NEllipsis, NGrid, NGridItem, NImage, NImageGroup, NSpin, useDialog, useMessage } from 'naive-ui'
 import { onMounted, ref } from 'vue'
-import { deletes, getList } from '@/api/system/file'
+import { deletes, getList, uploadFiles } from '@/api/system/file'
 import { set as savePanelConfig } from '@/api/panel/userConfig'
 import { RoundCardModal, SvgIcon } from '@/components/common'
 import { copyToClipboard, timeFormat } from '@/utils/cmn'
@@ -22,6 +22,8 @@ const ms = useMessage()
 const dialog = useDialog()
 const panelStore = usePanelState()
 const loading = ref(false)
+const uploading = ref(false) // 上传中状态
+const fileInputRef = ref<HTMLInputElement | null>(null) // 文件输入引用
 const infoModalState = ref<InfoModalState>({
   show: false,
   title: '',
@@ -87,6 +89,40 @@ function handleSetWallpaper(imgSrc: string) {
   })
 }
 
+// 触发文件选择
+function triggerFileSelect() {
+  fileInputRef.value?.click()
+}
+
+// 处理文件选择
+async function handleFileSelect(event: Event) {
+  const target = event.target as HTMLInputElement
+  const files = target.files
+  
+  if (!files || files.length === 0) {
+    return
+  }
+  
+  uploading.value = true
+  try {
+    const { code, msg } = await uploadFiles<any>(Array.from(files))
+    
+    if (code === 0) {
+      ms.success(t('common.uploadSuccess') || '上传成功')
+      // 刷新文件列表
+      await getFileList()
+    } else {
+      ms.error(`${t('common.uploadFail')}: ${msg}`)
+    }
+  } catch (error) {
+    ms.error(t('common.uploadFail'))
+  } finally {
+    uploading.value = false
+    // 清空input，允许重复选择同一文件
+    target.value = ''
+  }
+}
+
 onMounted(() => {
   getFileList()
 })
@@ -98,6 +134,29 @@ onMounted(() => {
     <NAlert type="info" :bordered="false">
       {{ $t('apps.uploadsFileManager.alertText') }}
     </NAlert>
+    
+    <!-- 上传按钮 -->
+    <div class="flex justify-center mt-4 mb-4">
+      <input
+        ref="fileInputRef"
+        type="file"
+        multiple
+        style="display: none;"
+        @change="handleFileSelect"
+      />
+      <NButton
+        type="primary"
+        :loading="uploading"
+        :disabled="uploading"
+        @click="triggerFileSelect"
+      >
+        <template #icon>
+          <SvgIcon icon="material-symbols:upload" />
+        </template>
+        {{ uploading ? ($t('common.uploading') || '上传中...') : ($t('common.upload') || '上传文件') }}
+      </NButton>
+    </div>
+    
     <div class="flex justify-center mt-2">
       <div v-if="imageList.length === 0 && !loading" class="flex">
         {{ $t('apps.uploadsFileManager.nothingText') }}

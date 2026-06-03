@@ -3,6 +3,7 @@ import { VueDraggable } from 'vue-draggable-plus'
 import { NBackTop, NButton, NButtonGroup, NDropdown, NModal, NSkeleton, NSpin, useDialog, useMessage } from 'naive-ui'
 import { nextTick, onMounted, onActivated, onUnmounted, ref, h, watch } from 'vue'
 import { AppIcon, AppStarter, EditItem, NotePad } from './components'
+import FileDownloader from '@/components/apps/FileDownloader/index.vue'
 import { Clock, SystemMonitor } from '@/components/deskModule'
 import SearchBoxWithSuggestions from '@/components/deskModule/SearchBoxWithSuggestions/index.vue'
 import { SvgIcon, SvgIconOnline } from '@/components/common'
@@ -47,6 +48,7 @@ const currentRightSelectItem = ref<Panel.ItemInfo | null>(null)
 const currentAddItenIconGroupId = ref<number | undefined>()
 const notepadVisible = ref(false)
 const notepadInstance = ref(null) // 便签实例
+const fileDownloaderVisible = ref(false) // 文件下载对话框
 let remindEventSource: EventSource | null = null // SSE 连接
 const isMobile = ref(false)
 const showIcons = ref(true) // 控制图标显示/隐藏
@@ -132,7 +134,7 @@ onMounted(async () => {
   
   // ✅ 启动 SSE 提醒推送并执行离线补偿
   if (authStore.visitMode === VisitMode.VISIT_MODE_LOGIN) {
-    // 1. 先把数据库里“挂起”的提醒弹出来（离线补偿）
+    // 1. 先把数据库里"挂起"的提醒弹出来（离线补偿）
     await checkInitialReminders()
     // 2. 再开启实时推送
     startRemindSSE()
@@ -754,6 +756,12 @@ function openPage(openMethod: number, url: string, title?: string) {
 }
 
 async function handleItemClick(itemGroupIndex: number, item: Panel.ItemInfo) {
+  // ✅ 检测特殊应用标识：文件下载
+  if (item.url === 'action:file-download') {
+    fileDownloaderVisible.value = true
+    return
+  }
+
   // 如果是移动端且刚刚是长按，则不触发点击事件
   if (isMobile.value && isLongPressing) {
     isLongPressing = false
@@ -1508,13 +1516,15 @@ function getNetworkModeButtonIcon() {
       >
         <!-- 头 -->
         <div class="mx-[auto] w-[80%]">
-          <!-- 右上角便签按钮 -->
+          <!-- 右上角便签和下载按钮 -->
           <div v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" 
-               class="fixed top-4 right-4 z-50 cursor-pointer shadow-[0_0_10px_2px_rgba(0,0,0,0.2)]" 
-               style="background-color: #2a2a2a6b; border-radius: 4px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;"
-               title="便签"
-               @click="notepadVisible = true">
-            <SvgIcon class="text-white" style="width: 25px; height: 25px;" icon="glyphs--note" />
+               class="fixed top-4 right-4 z-50 flex gap-2">
+            <div class="cursor-pointer shadow-[0_0_10px_2px_rgba(0,0,0,0.2)]" 
+                 style="background-color: #2a2a2a6b; border-radius: 4px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;"
+                 title="便签"
+                 @click="notepadVisible = true">
+              <SvgIcon class="text-white" style="width: 25px; height: 25px;" icon="glyphs--note" />
+            </div>
           </div>
         
           <div class="flex mx-[auto] items-center justify-center text-white">
@@ -1746,6 +1756,22 @@ function getNetworkModeButtonIcon() {
         ref="notepadInstance" 
         v-model:visible="notepadVisible" 
       />
+      <!-- 文件下载弹窗 -->
+      <NModal
+        v-model:show="fileDownloaderVisible"
+        preset="card"
+        title="文件下载"
+        style="max-width: 800px; max-height: 80vh; border-radius: 1rem;"
+        :content-style="{ padding: '12px', height: 'calc(80vh - 60px)', overflow: 'auto' }"
+        :bordered="true"
+        size="small"
+        role="dialog"
+        aria-modal="true"
+        :closable="true"
+        @close="fileDownloaderVisible = false"
+      >
+        <FileDownloader />
+      </NModal>
       <!-- <Setting v-model:visible="settingModalShow" /> -->
     </div>
 
