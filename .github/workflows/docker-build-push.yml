@@ -77,3 +77,4 @@ jobs:
           tags: |
             ghcr.io/${{ steps.lowercase.outputs.owner }}/sun-panel-dd:${{ env.APP_VERSION }}
             ghcr.io/${{ steps.lowercase.outputs.owner }}/sun-panel-dd:latest
+
