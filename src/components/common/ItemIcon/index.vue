@@ -52,7 +52,7 @@ const textColor = computed(() => {
 
         <template v-else-if="itemIcon?.itemType === 3">
           <NAvatar :size="props.size" :style="{ backgroundColor: (forceBackground ?? itemIcon?.backgroundColor) || defaultBackground, borderRadius: '12px' }">
-            <SvgIconOnline :style="{ fontSize: `${innerSize}px` }" :icon="itemIcon.text" />
+            <SvgIconOnline :style="{ fontSize: `${props.size * 0.6}px` }" :icon="itemIcon.text" />
           </NAvatar>
         </template>
       </template>

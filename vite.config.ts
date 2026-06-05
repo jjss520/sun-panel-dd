@@ -54,6 +54,7 @@ export default defineConfig((env) => {
       },
     },
     build: {
+      target: 'es2015', // 兼容 Android 7+ 和旧版浏览器
       reportCompressedSize: false,
       sourcemap: false,
       commonjsOptions: {
