@@ -44,7 +44,7 @@ RUN go install github.com/go-bindata/go-bindata/v3/go-bindata@latest
 
 RUN rm -f bindata.go assets/bindata.go \
     && /go/bin/go-bindata -o=assets/bindata.go -pkg=assets -ignore="bindata.go" assets/... \
-    && go build -o sun-panel --ldflags="-X sun-panel/global.RUNCODE=release -X sun-panel/global.ISDOCKER=docker" main.go
+    && go build -ldflags="-s -w -X sun-panel/global.RUNCODE=release -X sun-panel/global.ISDOCKER=docker" -o sun-panel main.go
 
 
 

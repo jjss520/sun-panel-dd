@@ -54,36 +54,36 @@ func (l LoginApi) Login(c *gin.Context) {
 	)
 	bToken := ""
 	param.Username = strings.TrimSpace(param.Username)
-	global.Logger.Infof("DEBUG LOGIN: Received Username=[%s], Password=[%s], PasswordLength=%d, TargetHash=[%s]", param.Username, param.Password, len(param.Password), cmn.PasswordEncryption(param.Password))
+	global.Logger.Infof("Login attempt for user: [%s]", param.Username)
 
 	// Check if user exists at all
 	var userCheck models.User
 	if err := global.Db.Where("username = ?", param.Username).First(&userCheck).Error; err != nil {
-		global.Logger.Errorf("DEBUG LOGIN: Username [%s] not found in DB. Error: %v", param.Username, err)
+		global.Logger.Warnf("Login failed: Username [%s] not found", param.Username)
 	} else {
-		global.Logger.Infof("DEBUG LOGIN: User [%s] found in DB. StoredHash=[%s]", param.Username, userCheck.Password)
+		global.Logger.Infof("User [%s] found in database", param.Username)
 	}
 
 	if info, err = mUser.GetUserInfoByUsernameAndPassword(param.Username, cmn.PasswordEncryption(param.Password)); err != nil {
 		// 未找到记录 账号或密码错误
 		if err == gorm.ErrRecordNotFound {
-			global.Logger.Warnf("DEBUG LOGIN: Login failed for [%s] - RECORD NOT FOUND with password index match.", param.Username)
+			global.Logger.Warnf("Login failed for [%s]: Invalid credentials", param.Username)
 			apiReturn.ErrorByCode(c, 1003)
 			return
 		} else {
 			// 未知错误
-			global.Logger.Errorf("DEBUG LOGIN: Database Error for [%s]: %v", param.Username, err)
+			global.Logger.Errorf("Login database error for [%s]: %v", param.Username, err)
 			apiReturn.Error(c, err.Error())
 			return
 		}
 
 	}
 
-	global.Logger.Infof("DEBUG LOGIN: GetUserInfo SUCCESS. Found ID=[%d], Status=[%d]", info.ID, info.Status)
+	global.Logger.Infof("User [%s] authentication successful, ID=[%d], Status=[%d]", info.ID, info.Status)
 
 	// 停用或未激活
 	if info.Status != 1 {
-		global.Logger.Warnf("DEBUG LOGIN: User [%s] is DISABLED or INACTIVE. Status=[%d]. Returning 1004.", param.Username, info.Status)
+		global.Logger.Warnf("User [%s] is disabled or inactive, Status=[%d]", param.Username, info.Status)
 		apiReturn.ErrorByCode(c, 1004)
 		return
 	}
@@ -116,7 +116,7 @@ func (l LoginApi) Login(c *gin.Context) {
 	// 设置当前用户信息
 	c.Set("userInfo", info)
 	info.Token = cToken // 重要 采用cToken,隐藏真实token
-	global.Logger.Infof("DEBUG LOGIN: ALL STEPS COMPLETE. Returning SuccessData for [%s]. Token=[%s...]", param.Username, cToken[:10])
+	global.Logger.Infof("Login successful for [%s]", param.Username)
 	apiReturn.SuccessData(c, info)
 }
 

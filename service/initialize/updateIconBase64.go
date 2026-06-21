@@ -41,9 +41,16 @@ func UpdateIconBase64() {
 			continue
 		}
 
-		// 检查是否为 base64 格式或本地文件路径
+		// 检查是否为 base64 格式、本地文件路径、完整 URL 或特殊标识
 		if strings.HasPrefix(iconInfo.Src, "data:") || strings.HasPrefix(iconInfo.Src, "/uploads/") || strings.HasPrefix(iconInfo.Src, "http://") || strings.HasPrefix(iconInfo.Src, "https://") {
 			// 已经是 base64 格式或者是本地文件路径或者是完整 URL，跳过
+			skippedCount++
+			continue
+		}
+
+		// 检查是否为特殊标识（如 action:file-download），这些不需要获取 favicon
+		if strings.HasPrefix(itemIcon.Url, "action:") {
+			global.Logger.Debug("Skipping special action URL:", itemIcon.Url)
 			skippedCount++
 			continue
 		}

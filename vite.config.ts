@@ -70,8 +70,10 @@ export default defineConfig((env) => {
       },
       terserOptions: {
         compress: {
-          // 保留 console.log 用于调试
-          drop_console: false,
+          // 生产环境移除 console.log，减小包体积
+          drop_console: true,
+          // 移除 debugger
+          drop_debugger: true,
         },
       },
     },
