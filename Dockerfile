@@ -25,16 +25,22 @@ RUN pnpm run build
 
 # build backend
 # sun-panel暂时解决方案使用golang:1.21-alpine3.18（因旧版本使用没问题，短期内较稳定）
-FROM --platform=$BUILDPLATFORM docker.m.daocloud.io/golang:1.21-alpine3.18 AS server_image
+FROM --platform=$BUILDPLATFORM docker.m.daocloud.io/golang:1.21 AS server_image
 
 WORKDIR /build
 
 COPY ./service .
 
 # 使用阿里云镜像源加速apk安装
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apt/sources.list || true
 
-RUN apk add --no-cache bash curl gcc git musl-dev
+# 安装交叉编译工具链 (Debian/Ubuntu 基础镜像)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash curl gcc git musl-dev \
+    && if [ "${TARGETARCH}" = "arm64" ]; then \
+        apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross; \
+    fi \
+    && rm -rf /var/lib/apt/lists/*
 
 # 中国国内源 (根据需要启用)
 RUN go env -w GO111MODULE=on \
@@ -44,7 +50,11 @@ RUN go install github.com/go-bindata/go-bindata/v3/go-bindata@latest
 
 RUN rm -f bindata.go assets/bindata.go \
     && /go/bin/go-bindata -o=assets/bindata.go -pkg=assets -ignore="bindata.go" assets/... \
-    && CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-s -w -X sun-panel/global.RUNCODE=release -X sun-panel/global.ISDOCKER=docker" -o sun-panel main.go
+    && if [ "${TARGETARCH}" = "arm64" ]; then \
+        CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-s -w -X sun-panel/global.RUNCODE=release -X sun-panel/global.ISDOCKER=docker" -o sun-panel main.go; \
+    else \
+        CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-s -w -X sun-panel/global.RUNCODE=release -X sun-panel/global.ISDOCKER=docker" -o sun-panel main.go; \
+    fi
 
 
 
