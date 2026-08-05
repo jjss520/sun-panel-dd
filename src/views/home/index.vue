@@ -444,10 +444,7 @@ const systemPingUrl = useStorage('systemPingUrl', '')
 async function checkIntranetConnection(): Promise<boolean> {
   if (!systemPingUrl.value) return false
 
-  let url = systemPingUrl.value.trim()
-  if (!url.startsWith('http://') && !url.startsWith('https://')) {
-    url = 'http://' + url
-  }
+  const url = systemPingUrl.value.trim()
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 150)
@@ -1215,11 +1212,9 @@ onMounted(async () => {
 
   // 加载Ping Url设置
   try {
-    if (!systemPingUrl.value) {
-      const res = await getSystemSettings<{pingUrl: string}>(['pingUrl'])
-      if (res.code === 0 && res.data && res.data.pingUrl) {
-        systemPingUrl.value = res.data.pingUrl
-      }
+    const res = await getSystemSettings<{pingUrl: string}>(['pingUrl'])
+    if (res.code === 0 && res.data && res.data.pingUrl) {
+      systemPingUrl.value = res.data.pingUrl
     }
   } catch (error) {
     console.error('获取Ping Url设置失败', error)

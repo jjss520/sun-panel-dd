@@ -38,11 +38,8 @@ async function testConnection() {
     return
   }
 
-  // 确保URL包含协议
-  let url = pingUrl.value.trim()
-  if (!url.startsWith('http://') && !url.startsWith('http://')) {
-    url = 'http://' + url
-  }
+  // 直接获取完整的 URL 地址，不再强行拼接 http://
+  const url = pingUrl.value.trim()
 
   isTesting.value = true
   testStatus.value = 'testing'
@@ -52,11 +49,8 @@ async function testConnection() {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 150)
 
-    // 使用 no-cors 模式避免 CORS 错误
-    // 这种模式下无法读取响应内容,但可以判断请求是否成功发出
     const response = await fetch(url, {
       method: 'GET',
-      // mode: 'no-cors', // 移除 no-cors 以获取状态码
       signal: controller.signal,
     })
 
