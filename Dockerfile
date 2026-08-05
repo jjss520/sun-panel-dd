@@ -25,14 +25,16 @@ RUN pnpm run build
 
 # build backend
 # sun-panel暂时解决方案使用golang:1.21-alpine3.18（因旧版本使用没问题，短期内较稳定）
-FROM --platform=$BUILDPLATFORM docker.m.daocloud.io/golang:1.21 AS server_image
+FROM --platform=$BUILDPLATFORM docker.m.daocloud.io/golang:1.21-bullseye AS server_image
 
 WORKDIR /build
 
 COPY ./service .
 
-# 使用阿里云镜像源加速apk安装
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apt/sources.list || true
+# 使用阿里云镜像源加速apt安装 (Debian Bullseye)
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list \
+    && sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list \
+    || true
 
 # 安装交叉编译工具链 (Debian/Ubuntu 基础镜像)
 RUN apt-get update && apt-get install -y --no-install-recommends \
