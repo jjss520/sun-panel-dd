@@ -1,5 +1,5 @@
 # build frontend
-FROM docker.m.daocloud.io/node:18-alpine AS web_image
+FROM --platform=$BUILDPLATFORM docker.m.daocloud.io/node:18-alpine AS web_image
 
 # 使用淘宝npm镜像源加速依赖安装
 RUN npm config set registry https://registry.npmmirror.com
@@ -25,7 +25,7 @@ RUN pnpm run build
 
 # build backend
 # sun-panel暂时解决方案使用golang:1.21-alpine3.18（因旧版本使用没问题，短期内较稳定）
-FROM docker.m.daocloud.io/golang:1.21-alpine3.18 AS server_image
+FROM --platform=$BUILDPLATFORM docker.m.daocloud.io/golang:1.21-alpine3.18 AS server_image
 
 WORKDIR /build
 
@@ -44,7 +44,7 @@ RUN go install github.com/go-bindata/go-bindata/v3/go-bindata@latest
 
 RUN rm -f bindata.go assets/bindata.go \
     && /go/bin/go-bindata -o=assets/bindata.go -pkg=assets -ignore="bindata.go" assets/... \
-    && go build -ldflags="-s -w -X sun-panel/global.RUNCODE=release -X sun-panel/global.ISDOCKER=docker" -o sun-panel main.go
+    && CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-s -w -X sun-panel/global.RUNCODE=release -X sun-panel/global.ISDOCKER=docker" -o sun-panel main.go
 
 
 
