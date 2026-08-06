@@ -1,11 +1,9 @@
 # build frontend
-FROM --platform=$BUILDPLATFORM docker.m.daocloud.io/node:18-alpine AS web_image
+FROM --platform=$BUILDPLATFORM node:18-alpine AS web_image
 
 # 使用淘宝npm镜像源加速依赖安装
 RUN npm config set registry https://registry.npmmirror.com
-
 RUN npm install pnpm -g
-
 # 配置 pnpm 使用淘宝镜像源
 RUN pnpm config set registry https://registry.npmmirror.com
 
@@ -13,22 +11,19 @@ WORKDIR /build
 
 # 先复制依赖文件（利用 Docker 缓存层）
 COPY package.json package-lock.json pnpm-lock.yaml ./
-
-# 安装依赖
 RUN pnpm install
 
-# 再复制其他文件
+# 再复制其他文件并构建
 COPY . .
-
-# 构建项目
 RUN pnpm run build
 
 # build backend
-# sun-panel暂时解决方案使用golang:1.21-alpine3.18（因旧版本使用没问题，短期内较稳定）
-FROM --platform=$BUILDPLATFORM docker.m.daocloud.io/golang:1.21-bullseye AS server_image
+FROM --platform=$BUILDPLATFORM golang:1.21-bullseye AS server_image
+
+# 【修复 1】必须显式声明 ARG TARGETARCH 才能获取 buildx 传入的架构参数
+ARG TARGETARCH
 
 WORKDIR /build
-
 COPY ./service .
 
 # 使用阿里云镜像源加速apt安装 (Debian Bullseye)
@@ -59,25 +54,24 @@ RUN rm -f bindata.go assets/bindata.go \
     fi
 
 
-
 # run_image
-FROM docker.m.daocloud.io/alpine:latest
+# 【修复 2】将运行镜像改为 debian:bullseye-slim，与编译环境的 glibc 保持一致，避免 CGO 运行报错
+FROM debian:bullseye-slim
 
 WORKDIR /app
 
 COPY --from=web_image /build/dist /app/web
-
 COPY --from=server_image /build/sun-panel /app/sun-panel
-
-# 中国国内源
-# RUN sed -i "s@dl-cdn.alpinelinux.org@mirrors.aliyun.com@g" /etc/apk/repositories
 
 EXPOSE 3002
 
-RUN apk add --no-cache bash ca-certificates su-exec tzdata \
+# 更新使用 apt-get 安装运行时依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash ca-certificates tzdata \
     && chmod +x ./sun-panel \
     && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone \
-    && mkdir -p /data/conf /data/database /data/uploads /data/runtime
+    && mkdir -p /data/conf /data/database /data/uploads /data/runtime \
+    && rm -rf /var/lib/apt/lists/*
 
 CMD ["./sun-panel"]
