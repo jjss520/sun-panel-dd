@@ -181,8 +181,8 @@
 											: 'hover:bg-gray-50 dark:hover:bg-gray-700'
 									]"
 									@contextmenu.prevent="!isMobile ? openContextMenu($event, item) : null"
-									@click="focusedItemId = String(item.id)"
-									@dblclick="item.isFolder ? openFolder(item.id) : openBookmark(item)"
+									@click="handleItemClick($event, item)"
+									@dblclick="!isMobile && (item.isFolder ? openFolder(item.id) : openBookmark(item))"
 								>
 									<!-- 图标 -->
 									<div class="flex-shrink-0 w-4 h-4 flex items-center justify-center mr-3">
@@ -659,6 +659,17 @@ function openFolder(folderId: string | number) {
 	selectedFolder.value = String(folderId)
 	searchQuery.value = '' // 清空搜索框
 	selectedKeysRef.value = [String(folderId)] // 同步左侧树选中状态
+}
+
+// 处理项目点击事件（区分移动端和桌面端）
+function handleItemClick(event: MouseEvent, item: any) {
+	// 设置聚焦的项目ID（用于显示URL）
+	focusedItemId.value = String(item.id)
+	
+	// 移动端：单击文件夹时展开，单击书签时不操作（等待双击或其他方式打开）
+	if (isMobile.value && item.isFolder) {
+		openFolder(item.id)
+	}
 }
 
 
