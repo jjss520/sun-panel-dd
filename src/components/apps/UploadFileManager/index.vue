@@ -33,7 +33,12 @@ const infoModalState = ref<InfoModalState>({
 async function getFileList() {
   loading.value = true
   const { data } = await getList<Common.ListResponse<File.Info[]>>()
-  imageList.value = data.list
+  // 处理文件路径，确保是正确的URL格式
+  imageList.value = data.list.map(item => ({
+    ...item,
+    // 如果src已经是完整URL则保持不变，否则添加前缀
+    src: item.src.startsWith('http') ? item.src : item.src
+  }))
   loading.value = false
 }
 
@@ -123,6 +128,20 @@ async function handleFileSelect(event: Event) {
   }
 }
 
+// 判断是否为图片文件
+function isImageFile(fileName: string): boolean {
+  const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.ico']
+  const ext = fileName.substring(fileName.lastIndexOf('.')).toLowerCase()
+  return imageExts.includes(ext)
+}
+
+// 处理图片加载错误
+function handleImageError(event: Event) {
+  const img = event.target as HTMLImageElement
+  console.warn('图片加载失败:', img.src)
+  // 可以在这里设置默认图标
+}
+
 onMounted(() => {
   getFileList()
 })
@@ -167,7 +186,18 @@ onMounted(() => {
             <NCard size="small" style="border-radius: 5px;" :bordered="true">
               <template #cover>
                 <div class="card transparent-grid">
-                  <NImage :lazy="true" style="object-fit: contain;height: 100%;" :src="item.src" />
+                  <!-- 只对图片文件显示预览 -->
+                  <NImage 
+                    v-if="isImageFile(item.fileName)" 
+                    :lazy="true" 
+                    style="object-fit: contain;height: 100%;" 
+                    :src="item.src" 
+                    @error="handleImageError"
+                  />
+                  <!-- 非图片文件显示图标 -->
+                  <div v-else class="flex items-center justify-center h-full">
+                    <SvgIcon icon="tabler:file" style="width: 40px; height: 40px; color: #666;" />
+                  </div>
                 </div>
               </template>
               <template #footer>

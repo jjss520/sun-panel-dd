@@ -1520,6 +1520,12 @@ function getNetworkModeButtonIcon() {
                  @click="notepadVisible = true">
               <SvgIcon class="text-white" style="width: 25px; height: 25px;" icon="glyphs--note" />
             </div>
+            <div class="cursor-pointer shadow-[0_0_10px_2px_rgba(0,0,0,0.2)]" 
+                 style="background-color: #2a2a2a6b; border-radius: 4px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;"
+                 title="书签管理"
+                 @click="router.push('/bookmark-manager')">
+              <SvgIcon class="text-white" style="width: 25px; height: 25px;" icon="material-symbols--bookmark" />
+            </div>
           </div>
         
           <div class="flex mx-[auto] items-center justify-center text-white">
