@@ -8,7 +8,7 @@ RUN pnpm config set registry https://registry.npmmirror.com
 WORKDIR /build
 
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN pnpm install
 
 COPY . .
 RUN pnpm run build
