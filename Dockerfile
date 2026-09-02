@@ -2,13 +2,13 @@
 FROM --platform=$BUILDPLATFORM docker.1ms.run/library/node:22-alpine AS web_image
 
 RUN npm config set registry https://registry.npmmirror.com
-RUN npm install pnpm -g
+RUN npm install -g pnpm@8
 RUN pnpm config set registry https://registry.npmmirror.com
 
 WORKDIR /build
 
-COPY package.json package-lock.json pnpm-lock.yaml ./
-RUN pnpm install
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 COPY . .
 RUN pnpm run build
