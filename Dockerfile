@@ -1,5 +1,5 @@
 # build frontend
-FROM --platform=$BUILDPLATFORM docker.1ms.run/library/node:18-alpine AS web_image
+FROM --platform=$BUILDPLATFORM docker.1ms.run/library/node:22-alpine AS web_image
 
 RUN npm config set registry https://registry.npmmirror.com
 RUN npm install pnpm -g
