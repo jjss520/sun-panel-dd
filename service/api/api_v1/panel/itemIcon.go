@@ -255,33 +255,17 @@ func (a *ItemIcon) GetSiteFavicon(c *gin.Context) {
 
 	// 1. 首先尝试从网站本身获取favicon
 	iconUrl, err := siteFavicon.GetOneFaviconURL(req.Url)
-	if err != nil {
-		// 2. 如果失败，使用谷歌的favicon服务作为回退
-		global.Logger.Debug("Failed to get favicon from site, trying Google API:", err)
-
-		// 使用谷歌的favicon服务作为回退
-		domain := parsedURL.Host
-		fullUrl = fmt.Sprintf("https://www.google.com/s2/favicons?domain=%s&sz=64", domain)
-		global.Logger.Debug("Using Google favicon service for domain:", domain)
-	} else {
+	if err == nil && iconUrl != "" {
 		// 处理获取到的favicon URL
 		if strings.HasPrefix(iconUrl, "//") {
-			// 协议相对URL，只添加当前协议
 			fullUrl = parsedURL.Scheme + ":" + iconUrl
-			global.Logger.Debug("Protocol relative URL, converted to:", fullUrl)
 		} else if strings.HasPrefix(iconUrl, "/") {
-			// 绝对路径，需要添加完整域名
 			fullUrl = parsedURL.Scheme + "://" + parsedURL.Host + iconUrl
-			global.Logger.Debug("Absolute path, converted to:", fullUrl)
 		} else if strings.HasPrefix(iconUrl, "http://") || strings.HasPrefix(iconUrl, "https://") {
-			// 完整URL，直接使用
 			fullUrl = iconUrl
-			global.Logger.Debug("Full URL, using directly:", fullUrl)
 		} else {
-			// 相对路径，需要添加完整域名和路径前缀
 			basePath := parsedURL.Path
 			if !strings.HasSuffix(basePath, "/") {
-				// 获取目录部分
 				lastSlash := strings.LastIndex(basePath, "/")
 				if lastSlash != -1 {
 					basePath = basePath[:lastSlash+1]
@@ -290,31 +274,44 @@ func (a *ItemIcon) GetSiteFavicon(c *gin.Context) {
 				}
 			}
 			fullUrl = parsedURL.Scheme + "://" + parsedURL.Host + basePath + iconUrl
-			global.Logger.Debug("Relative path, converted to:", fullUrl)
 		}
+
+		// 移除URL中的查询参数
+		if strings.Contains(fullUrl, "?") {
+			fullUrl = strings.Split(fullUrl, "?")[0]
+		}
+
+		// 尝试下载图标
+		base64Icon, getErr := getImageBase64(fullUrl)
+		if getErr == nil && base64Icon != "" {
+			resp.IconUrl = base64Icon
+			apiReturn.SuccessData(c, resp)
+			return
+		}
+		// 如果失败，继续尝试备用服务
 	}
 
-	// 移除URL中的查询参数，因为有些图标服务器不支持
-	if strings.Contains(fullUrl, "?") {
-		fullUrl = strings.Split(fullUrl, "?")[0]
-		global.Logger.Debug("Removed query params, final URL:", fullUrl)
+	// 2. 使用多个备用favicon服务
+	domain := parsedURL.Host
+	fallbackServices := []string{
+		// DuckDuckGo favicon service (更稳定)
+		fmt.Sprintf("https://icons.duckduckgo.com/ip3/%s.ico", domain),
+		// Clearbit favicon service
+		fmt.Sprintf("https://logo.clearbit.com/%s", domain),
+		// Google favicon service (最后尝试)
+		fmt.Sprintf("https://www.google.com/s2/favicons?domain=%s&sz=64", domain),
 	}
 
-	// 获取base64格式的图标
-	base64Icon, getErr := getImageBase64(fullUrl)
-	if getErr != nil {
-		// 如果获取失败，使用谷歌的favicon服务作为最终回退
-		global.Logger.Debug("Failed to get favicon from URL, trying Google API as final fallback:", getErr)
-		domain := parsedURL.Host
-		googleUrl := fmt.Sprintf("https://www.google.com/s2/favicons?domain=%s&sz=64", domain)
-		base64Icon, getErr = getImageBase64(googleUrl)
-		if getErr != nil {
-			apiReturn.Error(c, "acquisition failed:"+getErr.Error())
+	for _, serviceURL := range fallbackServices {
+		base64Icon, err := getImageBase64(serviceURL)
+		if err == nil && base64Icon != "" {
+			global.Logger.Debug("Successfully got favicon from:", serviceURL)
+			resp.IconUrl = base64Icon
+			apiReturn.SuccessData(c, resp)
 			return
 		}
 	}
 
-	// 返回base64格式的图标
-	resp.IconUrl = base64Icon
-	apiReturn.SuccessData(c, resp)
+	apiReturn.Error(c, "acquisition failed: failed to get favicon from all sources")
+	return
 }
