@@ -1,5 +1,5 @@
 # build frontend
-FROM --platform=$BUILDPLATFORM docker.1ms.run/library/node:22-alpine AS web_image
+FROM --platform=$BUILDPLATFORM node:22-alpine AS web_image
 
 RUN npm config set registry https://registry.npmmirror.com
 RUN npm install -g pnpm@8
@@ -18,7 +18,7 @@ RUN pnpm run build
 # 最新alpine3.19导致sqlite3编译失败(https://github.com/mattn/go-sqlite3/issues/1164，
 # 临时解决方案:https://github.com/mattn/go-sqlite3/pull/1177)
 # sun-panel暂时解决方案使用golang:1.21-alpine3.18（因旧版本使用没问题，短期内较稳定） 
-FROM docker.1ms.run/library/golang:1.21-alpine3.18 AS server_image
+FROM golang:1.21-alpine3.18 AS server_image
 
 WORKDIR /build
 COPY ./service .
@@ -39,7 +39,7 @@ RUN rm -f bindata.go assets/bindata.go \
 
 # run_image
 # 【优化 4】恢复使用体积最小的 alpine 作为最终运行环境
-FROM docker.1ms.run/library/alpine:latest
+FROM alpine:latest
 
 WORKDIR /app
 
