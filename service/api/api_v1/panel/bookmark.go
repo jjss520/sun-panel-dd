@@ -316,20 +316,15 @@ func getFaviconBase64(urlStr string) (string, error) {
 		urlStr = "https://" + urlStr
 	}
 
-	// Parse the URL to get the host for Google's service
+	// Parse the URL to get the host
 	urlInfo, parseErr := url.Parse(urlStr)
-	var googleFaviconURL string
-	if parseErr == nil {
-		// Use the host part for Google's favicon service
-		googleFaviconURL = fmt.Sprintf("https://www.google.com/s2/favicons?domain=%s", urlInfo.Host)
-	} else {
-		// Fall back to using the original URL if parsing fails
-		googleFaviconURL = fmt.Sprintf("https://www.google.com/s2/favicons?domain=%s", urlStr)
+	if parseErr != nil {
+		return "", fmt.Errorf("failed to parse URL: %v", parseErr)
 	}
 
-	// Create an HTTP client with a timeout to avoid hanging requests
+	// Create an HTTP client with a longer timeout
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: 30 * time.Second, // 增加超时时间到30秒
 	}
 
 	// Create a request with User-Agent header to avoid being blocked
@@ -339,7 +334,7 @@ func getFaviconBase64(urlStr string) (string, error) {
 			return nil, err
 		}
 		// Add User-Agent to simulate browser request
-		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3")
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 		return req, nil
 	}
 
@@ -353,7 +348,7 @@ func getFaviconBase64(urlStr string) (string, error) {
 			if err == nil && resp.StatusCode == http.StatusOK {
 				defer resp.Body.Close()
 				data, err := io.ReadAll(resp.Body)
-				if err == nil {
+				if err == nil && len(data) > 0 {
 					// Get Content-Type from response header
 					contentType := resp.Header.Get("Content-Type")
 					if contentType == "" {
@@ -363,39 +358,52 @@ func getFaviconBase64(urlStr string) (string, error) {
 				}
 			}
 		}
-		// If any step fails, fall through to try Google's service
 	}
 
-	// Second try: use Google's favicon service
-	req, err := createRequest(googleFaviconURL)
-	if err != nil {
-		return "", err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	// Check HTTP response status
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP request failed with status code %d", resp.StatusCode)
+	// Second try: use multiple fallback favicon services
+	fallbackServices := []string{
+		// DuckDuckGo favicon service (更稳定)
+		fmt.Sprintf("https://icons.duckduckgo.com/ip3/%s.ico", urlInfo.Host),
+		// Clearbit favicon service
+		fmt.Sprintf("https://logo.clearbit.com/%s", urlInfo.Host),
+		// Google favicon service (最后尝试)
+		fmt.Sprintf("https://www.google.com/s2/favicons?domain=%s&sz=64", urlInfo.Host),
 	}
 
-	// Read the image data
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
+	for _, serviceURL := range fallbackServices {
+		req, err := createRequest(serviceURL)
+		if err != nil {
+			continue
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+
+		// Check HTTP response status
+		if resp.StatusCode != http.StatusOK {
+			continue
+		}
+
+		// Read the image data
+		data, err := io.ReadAll(resp.Body)
+		if err != nil || len(data) == 0 {
+			continue
+		}
+
+		// Get Content-Type from response header
+		contentType := resp.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = "image/png" // Default to PNG if not specified
+		}
+
+		// Encode to base64 and add data URL prefix
+		return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 	}
 
-	// Get Content-Type from response header
-	contentType := resp.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "image/png" // Default to PNG if not specified
-	}
-
-	// Encode to base64 and add data URL prefix
-	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
+	return "", fmt.Errorf("failed to get favicon from all sources")
 }
 
 // Add 添加单个书签
