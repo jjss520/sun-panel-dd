@@ -1,4 +1,4 @@
-<template>
+﻿<template>
 	<div
 		class="flex flex-col h-screen bg-white dark:bg-gray-800"
 		@contextmenu.prevent
@@ -2074,10 +2074,7 @@ if (Array.isArray(folderTreeData) && folderTreeData.length > 0) {
 				// 设置空数组确保组件能正确渲染
 				bookmarkTree.value = [];
 				defaultExpandedKeys.value = [];
-				// 如果缓存数据有内容，返回以避免请求服务器
-				if (Array.isArray(treeDataResult) && treeDataResult.length > 0) {
-					return;
-				}
+				// 注意:这里不再return,而是继续执行后续的API请求
 			}
 			}
 
