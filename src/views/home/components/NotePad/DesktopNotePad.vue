@@ -9,6 +9,7 @@
         <div 
           ref="notepadRef"
           class="notepad-container"
+          :class="{ 'dark-mode': isDarkMode }"
           :style="{ left: x + 'px', top: y + 'px' }"
         >
           <!-- 左侧列表 -->
@@ -231,7 +232,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch, h } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch, h } from 'vue'
 import { SvgIcon, SvgIconOnline } from '@/components/common'
 import { useMessage, useDialog, NDatePicker } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -258,6 +259,9 @@ const { t } = useI18n()
 const message = useMessage()
 const dialog = useDialog()
 const authStore = useAuthStore()
+
+// 检测深色模式
+const isDarkMode = ref(document.documentElement.classList.contains('dark'))
 const editorRef = ref<HTMLDivElement | null>(null)
 const notepadRef = ref<HTMLElement | null>(null)
 const sidebarRef = ref<HTMLElement | null>(null)
@@ -298,7 +302,8 @@ const { x, y } = useDraggable(notepadRef, {
   handle: sidebarRef // 只在左侧列表区域可以拖动
 })
 
-// 初始化
+// 监听 dark class 变化
+let observer: MutationObserver | null = null
 onMounted(async () => {
     if (noteList.value.length === 0) {
         await loadList()
@@ -310,6 +315,22 @@ onMounted(async () => {
         editorElement.addEventListener('mousedown', (e) => {
             e.stopPropagation()
         }, true) // 使用捕获阶段
+    }
+    
+    // 监听 dark class 变化
+    observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.attributeName === 'class') {
+                isDarkMode.value = document.documentElement.classList.contains('dark')
+            }
+        })
+    })
+    observer.observe(document.documentElement, { attributes: true })
+})
+
+onUnmounted(() => {
+    if (observer) {
+        observer.disconnect()
     }
 })
 
@@ -1632,5 +1653,126 @@ const initData = async () => {
 .slide-up-leave-to {
   opacity: 0;
   transform: translateY(10px);
+}
+
+// 深色模式
+.notepad-container.dark-mode {
+  background: #1e1e1e;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.notepad-container.dark-mode .notepad-sidebar {
+  background: #2d2d2d;
+  border-right-color: #3a3a3a;
+}
+
+.notepad-container.dark-mode .sidebar-header,
+.notepad-container.dark-mode .editor-header,
+.notepad-container.dark-mode .sidebar-footer {
+  border-color: #3a3a3a;
+}
+
+.notepad-container.dark-mode .editor-footer {
+  border-top-color: #3a3a3a;
+  background: #2d2d2d;
+}
+
+.notepad-container.dark-mode .sidebar-title,
+.notepad-container.dark-mode .editor-title,
+.notepad-container.dark-mode .note-item-title,
+.notepad-container.dark-mode .note-item-title-input,
+.notepad-container.dark-mode .editor-title-input,
+.notepad-container.dark-mode .repeat-label,
+.notepad-container.dark-mode .advance-label {
+  color: #ffffff;
+}
+
+.notepad-container.dark-mode .action-icon,
+.notepad-container.dark-mode .remind-icon,
+.notepad-container.dark-mode .delete-icon,
+.notepad-container.dark-mode .note-item-time,
+.notepad-container.dark-mode .footer-text,
+.notepad-container.dark-mode .search-icon,
+.notepad-container.dark-mode .remind-picker-info,
+.notepad-container.dark-mode .close-picker-btn {
+  color: #a1a1a6;
+}
+
+.notepad-container.dark-mode .action-icon:hover {
+  color: #0a84ff;
+}
+
+.notepad-container.dark-mode .delete-icon:hover {
+  color: #ff453a;
+}
+
+.notepad-container.dark-mode .remind-icon.active {
+  color: #0a84ff;
+}
+
+.notepad-container.dark-mode .search-input,
+.notepad-container.dark-mode .repeat-select,
+.notepad-container.dark-mode .advance-select {
+  background: #3a3a3a;
+  color: #ffffff;
+  border-color: #3a3a3a;
+}
+
+.notepad-container.dark-mode .search-input::placeholder {
+  color: #a1a1a6;
+}
+
+.notepad-container.dark-mode .note-item:hover {
+  background: #3a3a3a;
+}
+
+.notepad-container.dark-mode .note-item.active {
+  background: #48484a;
+}
+
+.notepad-container.dark-mode .editor-content {
+  color: #ffffff;
+}
+
+.notepad-container.dark-mode .editor-content:empty:before {
+  color: #a1a1a6;
+}
+
+.notepad-container.dark-mode .remind-float-btn {
+  background: #007aff;
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+}
+
+.notepad-container.dark-mode .remind-float-btn.active {
+  background: #0a84ff;
+}
+
+.notepad-container.dark-mode .remind-picker {
+  background: #2d2d2d;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.notepad-container.dark-mode .cancel-btn {
+  background: #3a3a3a;
+  color: #ff453a;
+  border-color: #4a4a4a;
+}
+
+.notepad-container.dark-mode .cancel-btn:hover {
+  background: rgba(255, 69, 58, 0.15);
+  border-color: #ff453a;
+}
+.notepad-container.dark-mode .remind-picker-header span {
+  color: #ffffff;
+}
+
+.notepad-container.dark-mode .close-picker-btn {
+  color: #a1a1a6;
+}
+
+.notepad-container.dark-mode .close-picker-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
 }
 </style>

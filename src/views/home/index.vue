@@ -3,6 +3,7 @@ import { VueDraggable } from 'vue-draggable-plus'
 import { NBackTop, NButton, NButtonGroup, NDropdown, NModal, NSkeleton, NSpin, useDialog, useMessage } from 'naive-ui'
 import { nextTick, onMounted, onActivated, onUnmounted, ref, h, watch } from 'vue'
 import { AppIcon, AppStarter, EditItem, NotePad } from './components'
+import BookmarkManager from '@/views/bookmark-manager/index.vue'
 import FileDownloader from '@/components/apps/FileDownloader/index.vue'
 import { Clock, SystemMonitor } from '@/components/deskModule'
 import SearchBoxWithSuggestions from '@/components/deskModule/SearchBoxWithSuggestions/index.vue'
@@ -48,6 +49,7 @@ const currentRightSelectItem = ref<Panel.ItemInfo | null>(null)
 const currentAddItenIconGroupId = ref<number | undefined>()
 const notepadVisible = ref(false)
 const notepadInstance = ref(null) // 便签实例
+const bookmarkVisible = ref(false) // 书签管理器显示状态
 const fileDownloaderVisible = ref(false) // 文件下载对话框
 let remindEventSource: EventSource | null = null // SSE 连接
 const isMobile = ref(false)
@@ -1523,7 +1525,7 @@ function getNetworkModeButtonIcon() {
             <div class="cursor-pointer shadow-[0_0_10px_2px_rgba(0,0,0,0.2)]" 
                  style="background-color: #2a2a2a6b; border-radius: 4px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;"
                  title="书签管理"
-                 @click="router.push('/bookmark-manager')">
+                 @click="bookmarkVisible = true">
               <SvgIcon class="text-white" style="width: 25px; height: 25px;" icon="material-symbols--bookmark" />
             </div>
           </div>
@@ -1757,6 +1759,7 @@ function getNetworkModeButtonIcon() {
         ref="notepadInstance" 
         v-model:visible="notepadVisible" 
       />
+      <BookmarkManager v-model:visible="bookmarkVisible" />
       <!-- 文件下载弹窗 -->
       <NModal
         v-model:show="fileDownloaderVisible"

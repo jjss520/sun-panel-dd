@@ -6,7 +6,10 @@
         class="mobile-notepad-overlay"
         @click.self="handleClose"
       >
-        <div class="mobile-notepad-container">
+        <div 
+          class="mobile-notepad-container"
+          :class="{ 'dark-mode': isDarkMode }"
+        >
           
           <!-- 视图1：列表页 -->
           <div v-if="currentView === 'list'" class="mobile-view list-view">
@@ -256,6 +259,11 @@ const { t: _t } = useI18n()
 const message = useMessage()
 const dialog = useDialog()
 const authStore = useAuthStore()
+
+// 检测深色模式
+const isDarkMode = computed(() => {
+  return document.documentElement.classList.contains('dark')
+})
 const editorRef = ref<HTMLDivElement | null>(null)
 
 // 视图状态
@@ -1300,5 +1308,103 @@ defineExpose({ refreshData: loadList })
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+// 深色模式
+.mobile-notepad-container.dark-mode {
+  background: #1e1e1e;
+}
+
+.mobile-notepad-container.dark-mode .mobile-header,
+.mobile-notepad-container.dark-mode .mobile-editor-header,
+.mobile-notepad-container.dark-mode .mobile-remind-header,
+.mobile-notepad-container.dark-mode .mobile-footer,
+.mobile-notepad-container.dark-mode .mobile-editor-footer {
+  background: #2d2d2d;
+  border-color: #3a3a3a;
+}
+
+.mobile-notepad-container.dark-mode .mobile-title,
+.mobile-notepad-container.dark-mode .mobile-editor-title,
+.mobile-notepad-container.dark-mode .mobile-remind-title,
+.mobile-notepad-container.dark-mode .mobile-note-item-title,
+.mobile-notepad-container.dark-mode .section-label {
+  color: #ffffff;
+}
+
+.mobile-notepad-container.dark-mode .action-icon,
+.mobile-notepad-container.dark-mode .remind-icon,
+.mobile-notepad-container.dark-mode .delete-icon,
+.mobile-notepad-container.dark-mode .mobile-note-item-time,
+.mobile-notepad-container.dark-mode .footer-text,
+.mobile-notepad-container.dark-mode .search-icon,
+.mobile-notepad-container.dark-mode .cancel-btn-small {
+  color: #a1a1a6;
+}
+
+.mobile-notepad-container.dark-mode .search-input {
+  background: #3a3a3a;
+  color: #ffffff;
+}
+
+.mobile-notepad-container.dark-mode .mobile-search-box {
+  background: #1e1e1e;
+}
+
+.mobile-notepad-container.dark-mode .search-input::placeholder {
+  color: #a1a1a6;
+}
+
+.mobile-notepad-container.dark-mode .mobile-note-item:active {
+  background: #3a3a3a;
+}
+
+.mobile-notepad-container.dark-mode .mobile-editor-content {
+  color: #ffffff;
+}
+
+.mobile-notepad-container.dark-mode .mobile-editor-content:empty:before {
+  color: #a1a1a6;
+}
+
+.mobile-notepad-container.dark-mode .remind-float-btn {
+  background: #2d2d2d;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.mobile-notepad-container.dark-mode .remind-float-btn.active {
+  background: #0a84ff;
+}
+
+.mobile-notepad-container.dark-mode .radio-item {
+  background: #2d2d2d;
+}
+
+.mobile-notepad-container.dark-mode .radio-item:active {
+  background: #3a3a3a;
+}
+
+.mobile-notepad-container.dark-mode .radio-item span {
+  color: #ffffff;
+}
+
+.mobile-notepad-container.dark-mode .advance-select {
+  background: #3a3a3a;
+  color: #ffffff;
+  border-color: #3a3a3a;
+}
+
+.mobile-notepad-container.dark-mode .info-content {
+  color: #ffffff;
+}
+
+.mobile-notepad-container.dark-mode .cancel-btn {
+  background: #2d2d2d;
+  color: #ff453a;
+  border-color: #ff453a;
+}
+
+.mobile-notepad-container.dark-mode .cancel-btn:active {
+  background: rgba(255, 69, 58, 0.15);
 }
 </style>
