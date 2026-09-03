@@ -87,8 +87,8 @@
 
 		<!-- 主内容区域 -->
 		<div class="flex-1 flex flex-col overflow-hidden" @mousedown="preventContentDrag">
-			<!-- 面包屑导航 -->
-			<div v-if="breadcrumbPath.length > 0" class="px-4 py-2 border-b bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 flex items-center gap-2 text-sm">
+			<!-- 面包屑导航 - 一直显示 -->
+			<div class="px-4 py-2 border-b bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 flex items-center gap-2 text-sm">
 				<span 
 					class="cursor-pointer text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
 					@click="openFolder('0')"
