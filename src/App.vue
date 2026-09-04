@@ -22,6 +22,13 @@ const { language } = useLanguage()
     :theme="theme"
     :theme-overrides="themeOverrides"
     :locale="language"
+    :z-index="{
+      dialog: 100002,
+      dropdown: 100000,
+      popover: 100000,
+      tooltip: 100000,
+      treeSelect: 100003
+    }"
   >
     <NaiveProvider>
       <RouterView />

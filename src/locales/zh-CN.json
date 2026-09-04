@@ -61,6 +61,7 @@
     "cancel": "取消",
     "confirm": "确定",
     "edit": "编辑",
+    "rename": "重命名",
     "delete": "删除",
     "titleRequired": "标题不能为空",
     "urlRequired": "书签URL不能为空",

@@ -192,7 +192,7 @@
 
 									<!-- 三个点菜单 - 一直显示，颜色与右上角一致 -->
 									<div
-										class="flex-shrink-0 w-6 h-6 flex items-center justify-center ml-2 cursor-pointer text-gray-700 dark:text-white"
+										class="flex-shrink-0 w-6 h-6 flex items-center justify-center ml-2 cursor-pointer text-gray-700 dark:text-white context-menu-trigger"
 										@click.stop="openContextMenu($event, item)"
 									>
 										<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -209,8 +209,8 @@
 			</div>
 
 		<!-- 编辑书签对话框 -->
-		<div v-if="isEditDialogOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-			<div class="bg-white dark:bg-gray-800 p-6 rounded-lg w-96">
+		<div v-if="isEditDialogOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100001]" @click.stop>
+			<div class="bg-white dark:bg-gray-800 p-6 rounded-lg w-96" @click.stop>
 				<h3 class="text-xl font-bold text-gray-800 dark:text-white mb-4">{{ isCreateMode ? (bookmarkType === 'bookmark' ? t('bookmarkManager.createBookmark') : t('bookmarkManager.createFolder')) : t('bookmarkManager.editBookmark') }}</h3>
 				<div class="mb-4">
 					<label class="block mb-2 text-gray-800 dark:text-white">{{ t('bookmarkManager.title') }}</label>
@@ -230,15 +230,14 @@
 				</div>
 				<div class="mb-4">
 					<label class="block mb-2 text-gray-800 dark:text-white">{{ t('bookmarkManager.folder') }}</label>
-					<n-tree-select
-						v-model:value="currentEditBookmark.folderId"
-						:options="folderTreeOptions"
-						key-field="key"
-						label-field="label"
-						:placeholder="t('bookmarkManager.folder')"
-						default-expand-all
-						class="w-full"
-					/>
+					<select
+						v-model="currentEditBookmark.folderId"
+						class="w-full px-3 py-2 border border-gray-300 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-white"
+					>
+						<option v-for="option in folderTreeOptions" :key="option.key" :value="option.key">
+							{{ option.label }}
+						</option>
+					</select>
 				</div>
 				<div class="flex justify-end gap-2">
 					<button @click="closeEditDialog" class="px-4 py-2 border border-gray-300 rounded-md text-gray-800 dark:text-white">{{ t('bookmarkManager.cancel') }}</button>
@@ -247,19 +246,34 @@
 			</div>
 		</div>
 
-		<!-- 右键菜单 -->
-		<div
-			v-if="isContextMenuOpen"
-			:style="contextMenuStyle"
-			class="fixed bg-white dark:bg-gray-800 text-gray-700 dark:text-white shadow-lg py-1 z-50 w-40 context-menu border border-gray-200 dark:border-gray-700"
-			@contextmenu.prevent.stop
-		>
-			<div v-if="!currentBookmark?.isFolder" @click="handleEditBookmark" class="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">{{ t('bookmarkManager.edit') }}</div>
-			<div @click="handleDeleteBookmark" class="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">{{ t('bookmarkManager.delete') }}</div>
+		<!-- 删除确认对话框 -->
+		<div v-if="isDeleteDialogOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100002]" @click.stop>
+			<div class="bg-white dark:bg-gray-800 p-6 rounded-lg w-96" @click.stop>
+				<h3 class="text-xl font-bold text-gray-800 dark:text-white mb-4">{{ t('bookmarkManager.confirmDelete') }}</h3>
+				<p class="text-gray-700 dark:text-gray-300 mb-6">{{ deleteConfirmMessage }}</p>
+				<div class="flex justify-end gap-2">
+					<button @click="closeDeleteDialog" class="px-4 py-2 border border-gray-300 rounded-md text-gray-800 dark:text-white">{{ t('bookmarkManager.cancel') }}</button>
+					<button @click="confirmDelete" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors shadow-md">{{ t('bookmarkManager.confirm') }}</button>
+				</div>
+			</div>
 		</div>
+
       </div>
     </div>
     </transition>
+
+    <!-- 右键菜单 - 使用Teleport传送到body，避免被overlay遮挡 -->
+    <Teleport to="body">
+      <div
+        v-if="isContextMenuOpen"
+        :style="contextMenuStyle"
+        class="fixed bg-white dark:bg-gray-800 text-gray-700 dark:text-white shadow-lg py-1 z-[100004] w-40 context-menu border border-gray-200 dark:border-gray-700"
+        @contextmenu.prevent.stop
+      >
+        <div @click="handleEditBookmark" class="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">{{ currentBookmark?.isFolder ? t('bookmarkManager.rename') : t('bookmarkManager.edit') }}</div>
+        <div @click="handleDeleteBookmark" class="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">{{ t('bookmarkManager.delete') }}</div>
+      </div>
+    </Teleport>
   </Teleport>
 </template>
 
@@ -268,11 +282,10 @@
 
 import { ref, computed, onMounted, onUnmounted, h, watch, nextTick } from 'vue'
 // 不再直接导入SVG文件，使用内联方式
-import { NTree, NInput, useMessage, NTreeSelect } from 'naive-ui'
+import { NTree, NInput, useMessage } from 'naive-ui'
 import { useRouter } from 'vue-router'
 import { getList as getBookmarksList, add as addBookmark, update, deletes, addMultiple as addMultipleBookmarks } from '@/api/panel/bookmark'
 import { t } from '@/locales'
-import { dialog } from '@/utils/request/apiMessage'
 import { ss } from '@/utils/storage/local'
 import { openUrlWithoutReferer } from '@/utils/cmn'
 import { SvgIcon } from '@/components/common'
@@ -316,9 +329,14 @@ const { x, y } = useDraggable(containerRef, {
   stopPropagation: true
 })
 
-// 阻止内容区域拖动
+// 阻止内容区域拖动 - 只阻止非对话框区域的拖动
 const preventContentDrag = (e: MouseEvent) => {
-  e.stopPropagation()
+  // 如果点击的是对话框或其子元素,不阻止事件
+  const target = e.target as HTMLElement;
+  if (target.closest('.fixed.inset-0')) {
+    return; // 对话框区域,不阻止
+  }
+  e.stopPropagation();
 }
 
 // 检测深色模式
@@ -740,7 +758,16 @@ const folderTreeOptions = computed(() => {
   };
 
   const treeData = fullData.value.length > 0 ? fullData.value : bookmarkTree.value;
-  return [rootOption, ...processNodes(treeData)];
+  
+  console.log('[Bookmark Debug] fullData.length:', fullData.value.length);
+  console.log('[Bookmark Debug] bookmarkTree.length:', bookmarkTree.value.length);
+  console.log('[Bookmark Debug] treeData:', treeData);
+  
+  const result = [rootOption, ...processNodes(treeData)];
+  
+  console.log('[Bookmark Debug] folderTreeOptions:', result);
+  
+  return result;
 });
 
 
@@ -756,6 +783,11 @@ const currentEditBookmark = ref({
 	folderId: '0' as string | number | undefined,
 	iconJson: '',
 } as { id: number; title: string; url: string; folderId?: string | number | undefined; iconJson?: string; });
+
+// 删除确认对话框相关
+const isDeleteDialogOpen = ref(false);
+const deleteConfirmMessage = ref('');
+const bookmarkToDelete = ref<Bookmark & { isFolder?: boolean } | null>(null);
 
 
 // 右键菜单样式
@@ -994,7 +1026,7 @@ const renderTreeLabel = ({ option }: { option: any }) => {
 function handleGlobalClick(event: MouseEvent) {
 	const path = event.composedPath() as HTMLElement[]
 	const clickedInsideMenu = path.some(
-		(el) => el.classList && (el.classList.contains('context-menu') || el.closest('.custom-dropdown'))
+		(el) => el.classList && (el.classList.contains('context-menu') || el.classList.contains('context-menu-trigger') || el.closest('.custom-dropdown'))
 	)
 	if (!clickedInsideMenu) {
 		closeContextMenu()
@@ -1635,12 +1667,17 @@ function handleEditBookmark() {
   if (currentBookmark.value) {
     currentEditBookmark.value = {
       ...currentBookmark.value,
+      // 确保folderId是字符串类型，以匹配n-tree-select的options key
+      folderId: String(currentBookmark.value.folderId || '0')
     };
     // 根据是否为文件夹设置书签类型
     bookmarkType.value = currentBookmark.value.isFolder ? 'folder' : 'bookmark';
     // 设置为修改模式
     isCreateMode.value = false;
-    isEditDialogOpen.value = true;
+    // 使用nextTick确保数据更新后再打开对话框
+    nextTick(() => {
+      isEditDialogOpen.value = true;
+    });
   }
   isContextMenuOpen.value = false;
 }
@@ -1767,7 +1804,7 @@ async function saveBookmarkChanges() {
 				id: Number(currentEditBookmark.value.id),
 				title: currentEditBookmark.value.title,
 				parentId: parentId,
-				sort: 9999,
+				sort: currentBookmark.value?.sort || 0, // 保留原有的排序值
 				lanUrl: '',
 				icon: null,
 				openMethod: 0,
@@ -1801,42 +1838,52 @@ async function saveBookmarkChanges() {
 }
 
 // 删除书签或文件夹
-async function deleteBookmark(bookmark: Bookmark) {
+async function deleteBookmark(bookmark: Bookmark & { isFolder?: boolean }) {
 	// 根据是否为文件夹显示不同的确认消息
 	const confirmMessage = bookmark.isFolder
 		? t('bookmarkManager.deleteFolderConfirm').replace('name', "【"+bookmark.title+"】")
 		 : t('bookmarkManager.deleteBookmarkConfirm').replace('name', "【"+bookmark.title+"】");
 
-	// 直接使用从apiMessage导入的dialog对象
-	dialog.warning({
-		title: t('bookmarkManager.confirmDelete'),
-		content: confirmMessage,
-		positiveText: t('bookmarkManager.confirm'),
-		negativeText: t('bookmarkManager.cancel'),
-		onPositiveClick: async () => {
-			 try {
-				 const response = await deletes([Number(bookmark.id)]);
-				 if (response.code === 0) {
-					 // 重置选中状态
-					 if (selectedBookmarkId.value === bookmark.id.toString()) {
-						 selectedBookmarkId.value = '';
-					 }
-					 // 如果删除的是当前选中的文件夹，清空选中状态
-					 if (bookmark.isFolder && selectedFolder.value === bookmark.id.toString()) {
-						 selectedFolder.value = '0';
-					 }
+	// 设置删除对话框状态
+	isDeleteDialogOpen.value = true;
+	deleteConfirmMessage.value = confirmMessage;
+	bookmarkToDelete.value = bookmark;
+}
 
-					 // 更新本地缓存数据，而不是强制刷新
-					 updateCacheAfterDelete(Number(bookmark.id), bookmark.isFolder || false);
+// 关闭删除对话框
+function closeDeleteDialog() {
+	isDeleteDialogOpen.value = false;
+	deleteConfirmMessage.value = '';
+	bookmarkToDelete.value = null;
+}
 
-				 } else {
-					 ms.error(`${t('common.failed')}: ${response.msg}`);
-				 }
-			 } catch (error) {
-				 ms.error(`${t('common.failed')} ${(error as Error).message || t('bookmarkManager.unknownError')}`);
-			 }
-		 }
-	});
+// 确认删除
+async function confirmDelete() {
+	if (!bookmarkToDelete.value) return;
+
+	try {
+		const response = await deletes([Number(bookmarkToDelete.value.id)]);
+		if (response.code === 0) {
+			// 重置选中状态
+			if (selectedBookmarkId.value === bookmarkToDelete.value.id.toString()) {
+				selectedBookmarkId.value = '';
+			}
+			// 如果删除的是当前选中的文件夹，清空选中状态
+			if (bookmarkToDelete.value.isFolder && selectedFolder.value === bookmarkToDelete.value.id.toString()) {
+				selectedFolder.value = '0';
+			}
+
+			// 更新本地缓存数据，而不是强制刷新
+			updateCacheAfterDelete(Number(bookmarkToDelete.value.id), bookmarkToDelete.value.isFolder || false);
+
+			// 关闭对话框
+			closeDeleteDialog();
+		} else {
+			ms.error(`${t('common.failed')}: ${response.msg}`);
+		}
+	} catch (error) {
+		ms.error(`${t('common.failed')} ${(error as Error).message || t('bookmarkManager.unknownError')}`);
+	}
 }
 
 // 触发导入书签
