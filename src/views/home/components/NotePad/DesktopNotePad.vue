@@ -297,8 +297,18 @@ const preventEditorDrag = (e: MouseEvent) => {
     e.stopPropagation()
 }
 
+// 动态计算窗口初始位置（居中）
+const getInitialPosition = () => {
+  const width = Math.min(Math.max(window.innerWidth * 0.8, 800), 1200);
+  const height = Math.min(Math.max(window.innerHeight * 0.75, 500), 800);
+  return {
+    x: (window.innerWidth - width) / 2,
+    y: (window.innerHeight - height) / 2
+  };
+};
+
 const { x, y } = useDraggable(notepadRef, {
-  initialValue: { x: (window.innerWidth - 1000) / 2, y: (window.innerHeight - 600) / 2 },
+  initialValue: getInitialPosition(),
   handle: sidebarRef // 只在左侧列表区域可以拖动
 })
 
@@ -1075,8 +1085,12 @@ const initData = async () => {
 
 .notepad-container {
   position: absolute;
-  width: 1000px;
-  height: 600px;
+  width: 80vw !important;
+  max-width: 1200px !important;
+  min-width: 800px !important;
+  height: 75vh !important;
+  max-height: 800px !important;
+  min-height: 500px !important;
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);

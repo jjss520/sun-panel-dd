@@ -1798,29 +1798,40 @@ function getNetworkModeButtonIcon() {
 
     <!-- 弹窗 -->
     <NModal
-      v-model:show="windowShow" :mask-closable="false" preset="card"
-      style="max-width: 1000px;height: 600px;border-radius: 1rem;" :bordered="true" size="small" role="dialog"
+      v-model:show="windowShow" 
+      :mask-closable="false"
+      class="notepad-modal"
+      :style="{
+        width: '80vw',
+        maxWidth: '1200px',
+        minWidth: '800px',
+        height: '75vh',
+        maxHeight: '800px',
+        minHeight: '500px'
+      }"
+      role="dialog"
       aria-modal="true"
     >
-      <template #header>
-        <div class="flex items-center">
-          <span class="mr-[20px]">
-            {{ windowTitle }}
-          </span>
-
-          <NSpin v-if="windowIframeIsLoad" size="small" />
+      <div class="notepad-modal-content">
+        <div class="modal-header flex items-center justify-between px-6 py-4 border-b dark:border-zinc-700">
+          <div class="flex items-center">
+            <span class="mr-[20px] text-lg font-semibold">
+              {{ windowTitle }}
+            </span>
+            <NSpin v-if="windowIframeIsLoad" size="small" />
+          </div>
         </div>
-      </template>
-      <div class="w-full h-full rounded-2xl overflow-hidden border dark:border-zinc-700">
-        <div v-if="windowIframeIsLoad" class="flex flex-col p-5">
-          <NSkeleton height="50px" width="100%" class="rounded-lg" />
-          <NSkeleton height="180px" width="100%" class="mt-[20px] rounded-lg" />
-          <NSkeleton height="180px" width="100%" class="mt-[20px] rounded-lg" />
+        <div class="modal-body w-full h-full rounded-2xl overflow-hidden border-t dark:border-zinc-700">
+          <div v-if="windowIframeIsLoad" class="flex flex-col p-5">
+            <NSkeleton height="50px" width="100%" class="rounded-lg" />
+            <NSkeleton height="180px" width="100%" class="mt-[20px] rounded-lg" />
+            <NSkeleton height="180px" width="100%" class="mt-[20px] rounded-lg" />
+          </div>
+          <iframe
+            v-show="!windowIframeIsLoad" id="windowIframeId" ref="windowIframeRef" :src="windowSrc"
+            class="w-full h-full" frameborder="0" @load="handWindowIframeIdLoad"
+          />
         </div>
-        <iframe
-          v-show="!windowIframeIsLoad" id="windowIframeId" ref="windowIframeRef" :src="windowSrc"
-          class="w-full h-full" frameborder="0" @load="handWindowIframeIdLoad"
-        />
       </div>
     </NModal>
 
@@ -1991,6 +2002,30 @@ html {
 }
 
 
+
+/* 便签窗口样式 - 确保与书签窗口尺寸完全一致 */
+.notepad-modal {
+  width: 80vw !important;
+  max-width: 1200px !important;
+  min-width: 800px !important;
+  height: 75vh !important;
+  max-height: 800px !important;
+  min-height: 500px !important;
+}
+
+.notepad-modal-content {
+  width: 100%;
+  height: 100%;
+  background: white;
+  border-radius: 1rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dark .notepad-modal-content {
+  background: #1e1e1e;
+}
 
 /* 优化条状按钮阴影 */
 /* 优化条状按钮阴影 - 已移除，避免污染全局 .fixed 类 */

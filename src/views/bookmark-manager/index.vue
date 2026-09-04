@@ -322,8 +322,17 @@ const isPanelExpanded = ref(false)
 // 拖动相关
 const headerRef = ref<HTMLElement | null>(null)
 const containerRef = ref<HTMLElement | null>(null)
+// 动态计算窗口初始位置（居中）
+const getInitialPosition = () => {
+  const width = Math.min(Math.max(window.innerWidth * 0.8, 800), 1200);
+  const height = Math.min(Math.max(window.innerHeight * 0.75, 500), 800);
+  return {
+    x: (window.innerWidth - width) / 2,
+    y: (window.innerHeight - height) / 2
+  };
+};
 const { x, y } = useDraggable(containerRef, {
-  initialValue: { x: (window.innerWidth - 1000) / 2, y: (window.innerHeight - 600) / 2 },
+  initialValue: getInitialPosition(),
   handle: headerRef,
   preventDefault: true,
   stopPropagation: true
@@ -2870,8 +2879,12 @@ onUnmounted(() => {
 @media (min-width: 768px) {
   .bookmark-manager-container {
     position: fixed;
-    width: 1000px;
-    height: 600px;
+    width: 80vw;
+    max-width: 1200px;
+    min-width: 800px;
+    height: 75vh;
+    max-height: 800px;
+    min-height: 500px;
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(20px);
     border-radius: 12px;
