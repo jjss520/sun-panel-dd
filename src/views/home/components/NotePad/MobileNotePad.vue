@@ -799,10 +799,20 @@ defineExpose({ refreshData: loadList })
   -webkit-tap-highlight-color: transparent;
 }
 
+.mobile-header {
+  position: relative;
+  justify-content: center;
+}
+
 .header-actions {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 8px;
+  z-index: 1;
 }
 
 .nav-left {
@@ -857,8 +867,8 @@ defineExpose({ refreshData: loadList })
 .mobile-title,
 .mobile-editor-title,
 .mobile-remind-title {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
   color: #1d1d1f;
   margin: 0;
   overflow: hidden;
@@ -872,6 +882,13 @@ defineExpose({ refreshData: loadList })
   &:active {
     opacity: 0.7;
   }
+}
+
+.mobile-header .mobile-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
 }
 
 .mobile-editor-title-input {
