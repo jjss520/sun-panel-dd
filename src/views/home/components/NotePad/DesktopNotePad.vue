@@ -1671,24 +1671,24 @@ const initData = async () => {
 
 // 深色模式
 .notepad-container.dark-mode {
-  background: #1e1e1e;
+  background: #18181c;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .notepad-container.dark-mode .notepad-sidebar {
-  background: #2d2d2d;
-  border-right-color: #3a3a3a;
+  background: #1c1c20;
+  border-right-color: #2c2c32;
 }
 
 .notepad-container.dark-mode .sidebar-header,
 .notepad-container.dark-mode .editor-header,
 .notepad-container.dark-mode .sidebar-footer {
-  border-color: #3a3a3a;
+  border-color: #2c2c32;
 }
 
 .notepad-container.dark-mode .editor-footer {
-  border-top-color: #3a3a3a;
-  background: #2d2d2d;
+  border-top-color: #2c2c32;
+  background: #1c1c20;
 }
 
 .notepad-container.dark-mode .sidebar-title,
@@ -1698,7 +1698,7 @@ const initData = async () => {
 .notepad-container.dark-mode .editor-title-input,
 .notepad-container.dark-mode .repeat-label,
 .notepad-container.dark-mode .advance-label {
-  color: #ffffff;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .notepad-container.dark-mode .action-icon,
@@ -1709,7 +1709,7 @@ const initData = async () => {
 .notepad-container.dark-mode .search-icon,
 .notepad-container.dark-mode .remind-picker-info,
 .notepad-container.dark-mode .close-picker-btn {
-  color: #a1a1a6;
+  color: rgba(255, 255, 255, 0.52);
 }
 
 .notepad-container.dark-mode .action-icon:hover {
@@ -1727,29 +1727,29 @@ const initData = async () => {
 .notepad-container.dark-mode .search-input,
 .notepad-container.dark-mode .repeat-select,
 .notepad-container.dark-mode .advance-select {
-  background: #3a3a3a;
-  color: #ffffff;
-  border-color: #3a3a3a;
+  background: #2c2c32;
+  color: rgba(255, 255, 255, 0.9);
+  border-color: #2c2c32;
 }
 
 .notepad-container.dark-mode .search-input::placeholder {
-  color: #a1a1a6;
+  color: rgba(255, 255, 255, 0.52);
 }
 
 .notepad-container.dark-mode .note-item:hover {
-  background: #3a3a3a;
+  background: #2c2c32;
 }
 
 .notepad-container.dark-mode .note-item.active {
-  background: #48484a;
+  background: #323238;
 }
 
 .notepad-container.dark-mode .editor-content {
-  color: #ffffff;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .notepad-container.dark-mode .editor-content:empty:before {
-  color: #a1a1a6;
+  color: rgba(255, 255, 255, 0.52);
 }
 
 .notepad-container.dark-mode .remind-float-btn {
@@ -1763,14 +1763,14 @@ const initData = async () => {
 }
 
 .notepad-container.dark-mode .remind-picker {
-  background: #2d2d2d;
+  background: #1c1c20;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 .notepad-container.dark-mode .cancel-btn {
-  background: #3a3a3a;
+  background: #2c2c32;
   color: #ff453a;
-  border-color: #4a4a4a;
+  border-color: #3c3c42;
 }
 
 .notepad-container.dark-mode .cancel-btn:hover {
@@ -1778,15 +1778,15 @@ const initData = async () => {
   border-color: #ff453a;
 }
 .notepad-container.dark-mode .remind-picker-header span {
-  color: #ffffff;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .notepad-container.dark-mode .close-picker-btn {
-  color: #a1a1a6;
+  color: rgba(255, 255, 255, 0.52);
 }
 
 .notepad-container.dark-mode .close-picker-btn:hover {
   background: rgba(255, 255, 255, 0.1);
-  color: #ffffff;
+  color: rgba(255, 255, 255, 0.9);
 }
 </style>

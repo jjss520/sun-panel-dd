@@ -2081,17 +2081,21 @@ function filterFoldersOnly(nodes: TreeOption[]): TreeOption[] {
 // 刷新书签列表
 	async function refreshBookmarks(forceRefresh = false) {
 	try {
-		// 首先尝试从BOOKMARKS_CACHE_KEY获取完整数据（与首页缓存一致）
+		console.log('[Bookmark] 开始刷新书签列表, forceRefresh:', forceRefresh);
+		
+		// 首先尝试从BOOKMARKS_CACHE_KEY获取完整数据(与首页缓存一致)
 	let folderTreeData: TreeOption[] = [];
 
-		// 强制刷新时清除缓存（与首页保持一致）
+		// 强制刷新时清除缓存(与首页保持一致)
 		if (forceRefresh) {
+			console.log('[Bookmark] 强制刷新,清除缓存');
 			ss.remove(BOOKMARKS_CACHE_KEY);
 		}
 
 		// 检查缓存是否存在
 		if (!forceRefresh) {
 			const cachedData = ss.get(BOOKMARKS_CACHE_KEY);
+			console.log('[Bookmark] 检查缓存, 存在:', !!cachedData);
 			if (cachedData) {
 				// 与首页保持一致的处理逻辑
 				let treeDataResult: TreeOption[] = [];
@@ -2152,8 +2156,10 @@ if (Array.isArray(folderTreeData) && folderTreeData.length > 0) {
 		}
 
 		// 缓存不存在或强制刷新时从服务器获取数据
-
-const response = await getBookmarksList();
+		console.log('[Bookmark] 从服务器获取书签数据...');
+		const response = await getBookmarksList();
+		console.log('[Bookmark] API响应:', { code: response.code, msg: response.msg, dataType: typeof response.data });
+		
 if (response.code === 0) {
 	// 后端返回格式为 { data: { list: [], count: number }, code: 0, msg: "" }
 	// 获取实际的书签数据列表
@@ -2161,14 +2167,18 @@ if (response.code === 0) {
 
 	// 检查响应结构
 	if (response.data) {
-		// 如果data本身是数组，直接使用
+		// 如果data本身是数组,直接使用
 		if (Array.isArray(response.data)) {
 			serverBookmarks = response.data;
+			console.log('[Bookmark] 数据格式: 直接数组, 数量:', serverBookmarks.length);
 		}
-		// 如果data是包含list字段的对象，使用list字段
+		// 如果data是包含list字段的对象,使用list字段
 				else if (Array.isArray((response.data as any).list)) {
 					serverBookmarks = (response.data as any).list;
+					console.log('[Bookmark] 数据格式: list数组, 数量:', serverBookmarks.length);
 				}
+	} else {
+		console.warn('[Bookmark] 响应中无data字段');
 	}
 
 	let treeDataResult = [];
@@ -2184,12 +2194,19 @@ if (response.code === 0) {
 		treeDataResult = buildBookmarkTree(serverBookmarks);
 	}
 
-	// 存储到缓存（与首页保持一致，缓存原始服务器数据）
-	// 缓存response.data，确保包含完整的服务器响应数据
-	ss.set(BOOKMARKS_CACHE_KEY, response.data);
-
-	// 更新完整数据（树结构）
+	// 存储到缓存(与首页保持一致,缓存原始服务器数据)
+	// 缓存response.data,确保包含完整的服务器响应数据
+	try {
+		ss.set(BOOKMARKS_CACHE_KEY, response.data);
+		console.log('[Bookmark] 缓存保存成功');
+	} catch (cacheError) {
+		console.error('[Bookmark] 缓存保存失败:', cacheError);
+		console.warn('[Bookmark] iOS Safari可能处于无痕模式或禁用了localStorage');
+	}
+	
+	// 更新完整数据(树结构)
 	fullData.value = treeDataResult;
+	console.log('[Bookmark] fullData更新完成, 节点数:', treeDataResult.length);
 
 	// 过滤文件夹
 	const folderTreeData = filterFoldersOnly(treeDataResult);
@@ -2218,20 +2235,23 @@ if (response.code === 0) {
 			}
 		} else {
 			// 服务器返回错误
-			console.error('获取书签数据失败:', response);
+			console.error('[Bookmark] 获取书签数据失败:', response);
+			console.error('[Bookmark] 错误详情 - code:', response.code, 'msg:', response.msg);
 			// 设置空数据确保组件能正确渲染
 			fullData.value = [];
 			bookmarkTree.value = [];
 			sortedItems.value = [];
 			defaultExpandedKeys.value = [];
-
+	
 			// 全局变量更新为空
 			if (globalThis) {
 				Object.defineProperty(globalThis, '__bookmarksFullData', { value: [], configurable: true });
 			}
 		}
 	} catch (error) {
-		console.error('刷新书签列表发生异常:', error);
+		console.error('[Bookmark] 刷新书签列表发生异常:', error);
+		console.error('[Bookmark] 错误堆栈:', (error as Error).stack);
+		console.error('[Bookmark] 可能是网络问题、认证失败或iOS Safari localStorage限制');
 		// 清空所有相关数据
 		bookmarkTree.value = [];
 		fullData.value = [];
@@ -2908,7 +2928,7 @@ onUnmounted(() => {
   }
 
   .bookmark-manager-container.dark-mode {
-    background: rgba(30, 30, 30, 0.95);
+    background: #18181c;
     backdrop-filter: blur(20px);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   }
@@ -2916,28 +2936,65 @@ onUnmounted(() => {
   /* 深色模式下内部元素样式 */
   .bookmark-manager-container.dark-mode .bg-gray-50,
   .bookmark-manager-container.dark-mode .border-b {
-    background: #2d2d2d !important;
-    border-color: #3a3a3a !important;
+    background: #1c1c20 !important;
+    border-color: #2c2c32 !important;
   }
 
   .bookmark-manager-container.dark-mode .text-gray-800 {
-    color: #ffffff !important;
+    color: rgba(255, 255, 255, 0.9) !important;
   }
 
   .bookmark-manager-container.dark-mode .text-gray-700 {
-    color: #e0e0e0 !important;
+    color: rgba(255, 255, 255, 0.82) !important;
   }
 
   .bookmark-manager-container.dark-mode .text-gray-600 {
-    color: #a1a1a6 !important;
+    color: rgba(255, 255, 255, 0.52) !important;
   }
 
   .bookmark-manager-container.dark-mode .bg-white {
-    background: #1e1e1e !important;
+    background: #18181c !important;
   }
 
   .bookmark-manager-container.dark-mode .border-gray-200 {
-    border-color: #3a3a3a !important;
+    border-color: #2c2c32 !important;
+  }
+
+  /* 覆盖Tailwind dark类的文字颜色 */
+  .bookmark-manager-container.dark-mode .dark\:text-white {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .bookmark-manager-container.dark-mode .dark\:text-gray-300 {
+    color: rgba(255, 255, 255, 0.82) !important;
+  }
+
+  .bookmark-manager-container.dark-mode .dark\:text-gray-400 {
+    color: rgba(255, 255, 255, 0.52) !important;
+  }
+
+  .bookmark-manager-container.dark-mode .dark\:text-gray-500 {
+    color: rgba(255, 255, 255, 0.52) !important;
+  }
+
+  .bookmark-manager-container.dark-mode .dark\:bg-gray-800 {
+    background: #1c1c20 !important;
+  }
+
+  .bookmark-manager-container.dark-mode .dark\:bg-gray-700 {
+    background: #2c2c32 !important;
+  }
+
+  .bookmark-manager-container.dark-mode .dark\:bg-gray-600 {
+    background: #2c2c32 !important;
+  }
+
+  .bookmark-manager-container.dark-mode .dark\:hover\:bg-gray-700:hover {
+    background: #2c2c32 !important;
+  }
+
+  .bookmark-manager-container.dark-mode .dark\:border-gray-700 {
+    border-color: #2c2c32 !important;
   }
 }
 
@@ -2949,6 +3006,74 @@ onUnmounted(() => {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  /* 移动端深色模式 */
+  .bookmark-manager-container.dark-mode {
+    background: #18181c;
+  }
+
+  .bookmark-manager-container.dark-mode .bg-gray-50,
+  .bookmark-manager-container.dark-mode .border-b {
+    background: #1c1c20 !important;
+    border-color: #2c2c32 !important;
+  }
+
+  .bookmark-manager-container.dark-mode .text-gray-800 {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .bookmark-manager-container.dark-mode .text-gray-700 {
+    color: rgba(255, 255, 255, 0.82) !important;
+  }
+
+  .bookmark-manager-container.dark-mode .text-gray-600 {
+    color: rgba(255, 255, 255, 0.52) !important;
+  }
+
+  .bookmark-manager-container.dark-mode .bg-white {
+    background: #18181c !important;
+  }
+
+  .bookmark-manager-container.dark-mode .border-gray-200 {
+    border-color: #2c2c32 !important;
+  }
+
+  /* 覆盖Tailwind dark类的文字颜色 */
+  .bookmark-manager-container.dark-mode .dark\:text-white {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .bookmark-manager-container.dark-mode .dark\:text-gray-300 {
+    color: rgba(255, 255, 255, 0.82) !important;
+  }
+
+  .bookmark-manager-container.dark-mode .dark\:text-gray-400 {
+    color: rgba(255, 255, 255, 0.52) !important;
+  }
+
+  .bookmark-manager-container.dark-mode .dark\:text-gray-500 {
+    color: rgba(255, 255, 255, 0.52) !important;
+  }
+
+  .bookmark-manager-container.dark-mode .dark\:bg-gray-800 {
+    background: #1c1c20 !important;
+  }
+
+  .bookmark-manager-container.dark-mode .dark\:bg-gray-700 {
+    background: #2c2c32 !important;
+  }
+
+  .bookmark-manager-container.dark-mode .dark\:bg-gray-600 {
+    background: #2c2c32 !important;
+  }
+
+  .bookmark-manager-container.dark-mode .dark\:hover\:bg-gray-700:hover {
+    background: #2c2c32 !important;
+  }
+
+  .bookmark-manager-container.dark-mode .dark\:border-gray-700 {
+    border-color: #2c2c32 !important;
   }
 }
 

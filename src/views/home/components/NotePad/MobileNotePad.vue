@@ -1299,7 +1299,7 @@ defineExpose({ refreshData: loadList })
 
 // 深色模式
 .mobile-notepad-container.dark-mode {
-  background: #1e1e1e;
+  background: #18181c;
 }
 
 .mobile-notepad-container.dark-mode .mobile-header,
@@ -1307,8 +1307,8 @@ defineExpose({ refreshData: loadList })
 .mobile-notepad-container.dark-mode .mobile-remind-header,
 .mobile-notepad-container.dark-mode .mobile-footer,
 .mobile-notepad-container.dark-mode .mobile-editor-footer {
-  background: #2d2d2d;
-  border-color: #3a3a3a;
+  background: #1c1c20;
+  border-color: #2c2c32;
 }
 
 .mobile-notepad-container.dark-mode .mobile-title,
@@ -1316,7 +1316,7 @@ defineExpose({ refreshData: loadList })
 .mobile-notepad-container.dark-mode .mobile-remind-title,
 .mobile-notepad-container.dark-mode .mobile-note-item-title,
 .mobile-notepad-container.dark-mode .section-label {
-  color: #ffffff;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .mobile-notepad-container.dark-mode .action-icon,
@@ -1326,36 +1326,36 @@ defineExpose({ refreshData: loadList })
 .mobile-notepad-container.dark-mode .footer-text,
 .mobile-notepad-container.dark-mode .search-icon,
 .mobile-notepad-container.dark-mode .cancel-btn-small {
-  color: #a1a1a6;
+  color: rgba(255, 255, 255, 0.52);
 }
 
 .mobile-notepad-container.dark-mode .search-input {
-  background: #3a3a3a;
-  color: #ffffff;
+  background: #2c2c32;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .mobile-notepad-container.dark-mode .mobile-search-box {
-  background: #1e1e1e;
+  background: #18181c;
 }
 
 .mobile-notepad-container.dark-mode .search-input::placeholder {
-  color: #a1a1a6;
+  color: rgba(255, 255, 255, 0.52);
 }
 
 .mobile-notepad-container.dark-mode .mobile-note-item:active {
-  background: #3a3a3a;
+  background: #2c2c32;
 }
 
 .mobile-notepad-container.dark-mode .mobile-editor-content {
-  color: #ffffff;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .mobile-notepad-container.dark-mode .mobile-editor-content:empty:before {
-  color: #a1a1a6;
+  color: rgba(255, 255, 255, 0.52);
 }
 
 .mobile-notepad-container.dark-mode .remind-float-btn {
-  background: #2d2d2d;
+  background: #1c1c20;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
@@ -1364,29 +1364,29 @@ defineExpose({ refreshData: loadList })
 }
 
 .mobile-notepad-container.dark-mode .radio-item {
-  background: #2d2d2d;
+  background: #1c1c20;
 }
 
 .mobile-notepad-container.dark-mode .radio-item:active {
-  background: #3a3a3a;
+  background: #2c2c32;
 }
 
 .mobile-notepad-container.dark-mode .radio-item span {
-  color: #ffffff;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .mobile-notepad-container.dark-mode .advance-select {
-  background: #3a3a3a;
-  color: #ffffff;
-  border-color: #3a3a3a;
+  background: #2c2c32;
+  color: rgba(255, 255, 255, 0.9);
+  border-color: #2c2c32;
 }
 
 .mobile-notepad-container.dark-mode .info-content {
-  color: #ffffff;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .mobile-notepad-container.dark-mode .cancel-btn {
-  background: #2d2d2d;
+  background: #2c2c32;
   color: #ff453a;
   border-color: #ff453a;
 }

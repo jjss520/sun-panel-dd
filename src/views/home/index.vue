@@ -467,9 +467,12 @@ async function checkIntranetConnection(): Promise<boolean> {
 // 获取书签数据并转换为前端需要的格式
 async function loadBookmarkTree(forceRefresh = false) {
   try {
+    console.log('[Home Bookmark] 开始加载书签, forceRefresh:', forceRefresh);
+    
     // 如果不是强制刷新且缓存存在，则使用缓存
     if (!forceRefresh) {
       const cachedData = ss.get(BOOKMARKS_CACHE_KEY)
+      console.log('[Home Bookmark] 检查缓存, 存在:', !!cachedData);
       if (cachedData) {
         // 处理缓存的原始fullData格式数据
         let treeDataResult = [];
@@ -519,10 +522,23 @@ async function loadBookmarkTree(forceRefresh = false) {
 
       // 更新treeData
       treeData.value = treeDataResult
-      ss.set(BOOKMARKS_CACHE_KEY, data)
+      console.log('[Home Bookmark] treeData更新完成, 节点数:', treeDataResult.length);
+      
+      try {
+        ss.set(BOOKMARKS_CACHE_KEY, data)
+        console.log('[Home Bookmark] 缓存保存成功');
+      } catch (cacheError) {
+        console.error('[Home Bookmark] 缓存保存失败:', cacheError);
+        console.warn('[Home Bookmark] iOS Safari可能处于无痕模式或禁用了localStorage');
+      }
+    } else {
+      console.error('[Home Bookmark] API返回错误 - code:', response.code, 'msg:', response.msg);
     }
   } catch (error) {
-    console.error('获取书签数据失败:', error)
+    console.error('[Home Bookmark] 获取书签数据失败:', error);
+    console.error('[Home Bookmark] 错误堆栈:', (error as Error).stack);
+    console.error('[Home Bookmark] 可能是网络问题、认证失败或iOS Safari localStorage限制');
+    
     // 出错时尝试使用缓存
     const cachedData = ss.get(BOOKMARKS_CACHE_KEY)
     if (cachedData) {
