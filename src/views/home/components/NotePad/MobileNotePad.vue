@@ -23,7 +23,7 @@
                   @click="showSortMenu = !showSortMenu"
                 />
                 <SvgIcon 
-                  class="close-icon" 
+                  class="action-icon" 
                   icon="material-symbols--close" 
                   @click="handleClose"
                 />
@@ -94,7 +94,7 @@
                 />
                 <h1 v-else class="mobile-editor-title" @click="startMobileEditing">{{ currentNote.title || '无标题' }}</h1>
               </div>
-              <SvgIcon class="close-icon" icon="material-symbols--close" @click="handleClose" />
+              <SvgIcon class="action-icon" icon="material-symbols--close" @click="handleClose" />
             </div>
 
             <!-- 编辑内容区 -->
@@ -741,20 +741,9 @@ const initData = async () => {
     // 先异步加载列表
     await loadList()
     
-    // 如果当前有正在编辑的便签（从PC端切换过来），保持编辑状态
-    if (currentNote.value.id && currentNote.value.content) {
-        // 已经有内容，直接进入编辑视图
-        currentView.value = 'editor'
-        nextTick(() => {
-            if (editorRef.value) {
-                editorRef.value.innerHTML = currentNote.value.content || ''
-            }
-        })
-    } else {
-        // 没有内容，显示列表
-        currentView.value = 'list'
-        currentNote.value = { id: 0, title: '', content: '' }
-    }
+    // 移动端：每次打开都先显示列表，不自动恢复上次的便签
+    currentView.value = 'list'
+    currentNote.value = { id: 0, title: '', content: '' }
 }
 
 defineExpose({ refreshData: loadList })
@@ -823,9 +812,7 @@ defineExpose({ refreshData: loadList })
   flex: 1;
 }
 
-.back-icon,
-.close-icon,
-.action-icon {
+.back-icon {
   font-size: 24px;
   color: #007aff;
   cursor: pointer;

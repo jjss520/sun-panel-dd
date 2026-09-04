@@ -75,13 +75,12 @@
 			<h1 class="text-xl font-bold text-gray-800 dark:text-white">{{ t('bookmarkManager.management') }}</h1>
 
 			<div class="flex items-center gap-2">
-				<!-- 关闭按钮 - 使用与便签一致的关闭图标 -->
-				<div
-					@click="handleClose"
-					class="flex items-center justify-center w-10 h-10 rounded-full bg-transparent text-gray-700 dark:text-white cursor-pointer transition-all hover:bg-gray-100 dark:hover:bg-gray-700"
-				>
-					<SvgIcon icon="material-symbols--close" />
-				</div>
+				<!-- 关闭按钮 - 使用与便签一致的关闭图标和样式 -->
+				<SvgIcon 
+					class="action-icon" 
+					icon="material-symbols--close" 
+					@click="handleClose" 
+				/>
 			</div>
 		</div>
 
@@ -2862,6 +2861,18 @@ onUnmounted(() => {
   right: 0;
   bottom: 0;
   z-index: 9999;
+}
+
+/* 关闭按钮样式 - 与便签一致 */
+.action-icon {
+  cursor: pointer;
+  font-size: 20px;
+  color: #86868b;
+  transition: color 0.2s;
+}
+
+.action-icon:hover {
+  color: #007aff;
 }
 
 /* 淡入淡出过渡 */
