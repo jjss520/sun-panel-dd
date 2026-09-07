@@ -98,8 +98,31 @@
                 @keyup.enter="saveHeaderTitle"
                 @click.stop
               />
-              <h1 v-else class="editor-title" @dblclick="startHeaderEditing">{{ currentNote.title || '无标题' }}</h1>
+              <h1 v-else class="editor-title" :class="{ 'editable': isEditMode }" @dblclick="isEditMode ? startHeaderEditing() : null">{{ currentNote.title || '无标题' }}</h1>
               <div class="editor-actions">
+                <!-- 查看模式：显示编辑按钮 -->
+                <SvgIcon 
+                  v-if="!isEditMode" 
+                  class="action-icon" 
+                  icon="basil--edit-outline" 
+                  @click="enterEditMode"
+                  title="编辑"
+                />
+                <!-- 编辑模式：显示保存和取消按钮 -->
+                <button 
+                  v-else
+                  class="save-btn" 
+                  @click="handleManualSave"
+                >
+                  保存
+                </button>
+                <button 
+                  v-if="isEditMode"
+                  class="cancel-edit-btn" 
+                  @click="handleCancelEdit"
+                >
+                  取消
+                </button>
                 <!-- 关闭按钮 -->
                 <SvgIcon class="action-icon" icon="material-symbols--close" @click="handleClose" />
               </div>
@@ -109,6 +132,7 @@
             <div 
               ref="editorRef"
               class="editor-content"
+              :class="{ 'readonly': !isEditMode }"
               contenteditable="true"
               @input="handleInput"
               @paste="handlePaste"
@@ -121,7 +145,7 @@
             <!-- 底部信息 -->
             <div class="editor-footer">
               <span class="footer-text">
-                最后编辑：{{ formatFullDate(currentNote.updateTime) }}，创建：{{ formatFullDate(currentNote.createTime) }}
+                {{ isEditMode ? '编辑模式' : '查看模式' }} | 最后编辑：{{ formatFullDate(currentNote.updateTime) }}，创建：{{ formatFullDate(currentNote.createTime) }}
               </span>
             </div>
 
@@ -278,6 +302,7 @@ const editingNoteId = ref<number | null>(null) // 正在编辑的便签ID
 const editingTitle = ref('') // 编辑中的标题
 const isEditingHeaderTitle = ref(false) // 是否正在编辑顶部标题
 const headerEditingTitle = ref('') // 顶部标题编辑值
+const isEditMode = ref(false) // 是否处于编辑模式
 
 // 监听当前便签变化，同步到编辑器
 watch(() => currentNote.value, (newNote) => {
@@ -285,6 +310,10 @@ watch(() => currentNote.value, (newNote) => {
         // 只在内容不同时才更新，避免光标跳动
         if (editorRef.value.innerHTML !== newNote.content) {
             editorRef.value.innerHTML = newNote.content || ''
+            // 查看模式下禁用编辑
+            if (!isEditMode.value) {
+                editorRef.value.contentEditable = 'false'
+            }
             nextTick(() => {
                 bindFileDownloadEvents()
             })
@@ -398,9 +427,9 @@ const formatLocalDateTime = (date: Date): string => {
     return `${y}-${m}-${d}T${h}:${mi}:${s}`
 }
 
-// 输入处理
+// 输入处理 - 只在编辑模式下才触发
 const handleInput = () => {
-    if (!editorRef.value) return
+    if (!editorRef.value || !isEditMode.value) return
     // 只保存内容，不自动生成标题
     saveContent()
 }
@@ -529,7 +558,7 @@ const handleSave = async () => {
 // 保存内容（防抖）
 const saveContent = useDebounceFn(handleSave, 1000)
 
-// 切换便签
+// 切换便签 - 进入查看模式
 const selectNote = (note: NotepadInfo) => {
     console.log('[NotePad] selectNote:', note.title)
     currentNote.value = { ...note }
@@ -542,22 +571,73 @@ const selectNote = (note: NotepadInfo) => {
         currentNote.value.remindAdvanceDays = 0
     }
     
+    // 设置为查看模式
+    isEditMode.value = false
+    
     if (editorRef.value) {
         editorRef.value.innerHTML = note.content || ''
+        // 查看模式下禁用编辑
+        editorRef.value.contentEditable = 'false'
         nextTick(() => {
             bindFileDownloadEvents()
         })
     }
 }
 
-// 新建便签
+// 进入编辑模式
+const enterEditMode = () => {
+    isEditMode.value = true
+    nextTick(() => {
+        if (editorRef.value) {
+            editorRef.value.contentEditable = 'true'
+            editorRef.value.focus()
+        }
+    })
+}
+
+// 保存内容(手动保存)
+const handleManualSave = async () => {
+    await handleSave()
+    isEditMode.value = false
+    // 保存后禁用编辑
+    nextTick(() => {
+        if (editorRef.value) {
+            editorRef.value.contentEditable = 'false'
+        }
+    })
+    message.success('保存成功')
+}
+
+// 取消编辑
+const handleCancelEdit = () => {
+    dialog.warning({
+        title: '提示',
+        content: '是否放弃当前修改？',
+        positiveText: '放弃',
+        negativeText: '继续编辑',
+        onPositiveClick: () => {
+            isEditMode.value = false
+            // 恢复原始内容
+            nextTick(() => {
+                if (editorRef.value && currentNote.value) {
+                    editorRef.value.innerHTML = currentNote.value.content || ''
+                    editorRef.value.contentEditable = 'false'
+                }
+            })
+        }
+    })
+}
+
+// 新建便签 - 直接进入编辑模式
 const createNew = () => {
     const finalTitle = `便签${noteList.value.length + 1}`
     currentNote.value = { id: 0, title: finalTitle, content: '' }
     currentRepeatType.value = 'none'
     currentAdvanceDays.value = 0
+    isEditMode.value = true // 新建时直接进入编辑模式
     if (editorRef.value) {
         editorRef.value.innerHTML = ''
+        editorRef.value.contentEditable = 'true'
         editorRef.value.focus()
     }
 }
@@ -638,8 +718,33 @@ const saveHeaderTitle = async () => {
 
 // 关闭
 const handleClose = () => {
-    handleSave()
-    emit('update:visible', false)
+    // 如果在编辑模式，提示保存
+    if (isEditMode.value) {
+        dialog.warning({
+            title: '提示',
+            content: '是否保存当前修改？',
+            positiveText: '保存',
+            negativeText: '不保存',
+            onPositiveClick: async () => {
+                await handleSave()
+                emit('update:visible', false)
+                isEditMode.value = false
+            },
+            onNegativeClick: () => {
+                emit('update:visible', false)
+                isEditMode.value = false
+                // 恢复原始内容
+                nextTick(() => {
+                    if (editorRef.value && currentNote.value) {
+                        editorRef.value.innerHTML = currentNote.value.content || ''
+                    }
+                })
+            }
+        })
+    } else {
+        // 查看模式直接关闭
+        emit('update:visible', false)
+    }
 }
 
 // 绑定文件下载事件
@@ -1297,9 +1402,30 @@ const initData = async () => {
   color: #1d1d1f;
   margin: 0;
   cursor: pointer;
+  transition: all 0.2s;
   
   &:hover {
     opacity: 0.7;
+  }
+  
+  // 编辑模式下显示可编辑提示
+  &.editable {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    
+    &::after {
+      content: '双击编辑';
+      font-size: 12px;
+      font-weight: normal;
+      color: #86868b;
+      opacity: 0.6;
+      white-space: nowrap;
+    }
+    
+    &:hover::after {
+      opacity: 1;
+    }
   }
 }
 
@@ -1314,15 +1440,67 @@ const initData = async () => {
   border-radius: 4px;
   width: 100%;
   max-width: 400px;
+  position: relative;
   
   &:focus {
     background: rgba(0, 122, 255, 0.1);
+  }
+  
+  // 编辑模式下显示可编辑提示
+  &::placeholder {
+    content: '双击编辑';
+    color: #86868b;
+    opacity: 0.6;
   }
 }
 
 .editor-actions {
   display: flex;
   gap: 12px;
+}
+
+// 保存按钮
+.save-btn {
+  padding: 6px 16px;
+  background: #007aff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  &:hover {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+  
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+// 取消编辑按钮
+.cancel-edit-btn {
+  padding: 6px 16px;
+  background: #f5f5f7;
+  color: #1d1d1f;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  &:hover {
+    background: #e8e8ed;
+    transform: scale(1.05);
+  }
+  
+  &:active {
+    transform: scale(0.95);
+  }
 }
 
 .editor-content {
@@ -1342,12 +1520,38 @@ const initData = async () => {
     content: attr(placeholder);
     color: #86868b;
   }
+  
+  // 只读模式样式
+  &.readonly {
+    background: #fafafa;
+    cursor: default;
+    user-select: text;
+  }
+}
+
+// 深色模式适配
+.dark .editor-content {
+  color: #f5f5f7;
+  
+  &:empty:before {
+    color: #86868b;
+  }
+  
+  &.readonly {
+    background: #2c2c2e;
+  }
 }
 
 .editor-footer {
   padding: 12px 16px;
   border-top: 1px solid #e0e0e0;
   background: #f5f5f7;
+}
+
+// 深色模式适配
+.dark .editor-footer {
+  border-top-color: #3a3a3c;
+  background: #1c1c1e;
 }
 
 .footer-text {
@@ -1382,6 +1586,16 @@ const initData = async () => {
   }
 }
 
+// 深色模式适配
+.dark .remind-float-btn {
+  background: #2c2c2e;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+}
+
 .remind-dot {
   position: absolute;
   top: -2px;
@@ -1403,6 +1617,12 @@ const initData = async () => {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
   padding: 16px;
   z-index: 10;
+}
+
+// 深色模式适配
+.dark .remind-picker {
+  background: #2c2c2e;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .remind-picker-header {
@@ -1476,6 +1696,13 @@ const initData = async () => {
     border-color: #007aff;
     box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.1);
   }
+}
+
+// 深色模式适配
+.dark .repeat-select {
+  border-color: #3a3a3c;
+  background: #1c1c1e;
+  color: #f5f5f7;
 }
 
 .repeat-badge {

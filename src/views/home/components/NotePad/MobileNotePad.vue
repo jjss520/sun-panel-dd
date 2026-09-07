@@ -92,15 +92,41 @@
                   @keyup.enter="saveMobileTitle"
                   @click.stop
                 />
-                <h1 v-else class="mobile-editor-title" @click="startMobileEditing">{{ currentNote.title || '无标题' }}</h1>
+                <h1 v-else class="mobile-editor-title" :class="{ 'editable': isEditMode }" @click="isEditMode ? startMobileEditing() : null">{{ currentNote.title || '无标题' }}</h1>
               </div>
-              <SvgIcon class="action-icon" icon="material-symbols--close" @click="handleClose" />
+              <div class="header-actions">
+                <!-- 查看模式：显示编辑按钮 -->
+                <SvgIcon 
+                  v-if="!isEditMode" 
+                  class="action-icon" 
+                  icon="basil--edit-outline" 
+                  @click="enterEditMode"
+                  title="编辑"
+                />
+                <!-- 编辑模式：显示保存和取消按钮 -->
+                <button 
+                  v-else
+                  class="save-btn" 
+                  @click="handleManualSave"
+                >
+                  保存
+                </button>
+                <button 
+                  v-if="isEditMode"
+                  class="cancel-edit-btn" 
+                  @click="handleCancelEdit"
+                >
+                  取消
+                </button>
+                <SvgIcon class="action-icon" icon="material-symbols--close" @click="handleClose" />
+              </div>
             </div>
 
             <!-- 编辑内容区 -->
             <div 
               ref="editorRef"
               class="mobile-editor-content"
+              :class="{ 'readonly': !isEditMode }"
               contenteditable="true"
               @input="handleInput"
               @paste="handlePaste"
@@ -110,7 +136,7 @@
             <!-- 底部信息 -->
             <div class="mobile-editor-footer">
               <span class="footer-text">
-                最后编辑：{{ formatFullDate(currentNote.updateTime) }}
+                {{ isEditMode ? '编辑模式' : '查看模式' }} | 最后编辑：{{ formatFullDate(currentNote.updateTime) }}
               </span>
             </div>
 
@@ -268,6 +294,7 @@ const editorRef = ref<HTMLDivElement | null>(null)
 
 // 视图状态
 const currentView = ref<'list' | 'editor' | 'remind'>('list')
+const isEditMode = ref(false) // 是否处于编辑模式
 
 // 数据状态
 const currentNote = useStorage<Partial<NotepadInfo>>('sun-panel-notepad-current', { id: 0, title: '', content: '' })
@@ -339,9 +366,9 @@ const formatLocalDateTime = (date: Date): string => {
     return `${y}-${m}-${d}T${h}:${mi}:${s}`
 }
 
-// 输入处理
+// 输入处理 - 只在编辑模式下才触发
 const handleInput = () => {
-    if (!editorRef.value) return
+    if (!editorRef.value || !isEditMode.value) return
     // 只保存内容，不自动生成标题
     saveContent()
 }
@@ -432,11 +459,15 @@ watch(() => currentNote.value, (newNote) => {
         // 只在内容不同时才更新，避免光标跳动
         if (editorRef.value.innerHTML !== newNote.content) {
             editorRef.value.innerHTML = newNote.content || ''
+            // 查看模式下禁用编辑
+            if (!isEditMode.value) {
+                editorRef.value.contentEditable = 'false'
+            }
         }
     }
 }, { deep: true })
 
-// 切换便签
+// 切换便签 - 进入查看模式
 const selectNote = (note: NotepadInfo) => {
     currentNote.value = { ...note }
     currentRepeatType.value = note.remindRepeat || 'none'
@@ -447,27 +478,76 @@ const selectNote = (note: NotepadInfo) => {
         currentNote.value.remindAdvanceDays = 0
     }
     
-    // 切换到编辑视图
+    // 切换到查看视图(非编辑模式)
     currentView.value = 'editor'
+    isEditMode.value = false
     
     // 等待视图渲染后设置内容
     nextTick(() => {
         if (editorRef.value) {
             editorRef.value.innerHTML = note.content || ''
+            // 查看模式下禁用编辑
+            editorRef.value.contentEditable = 'false'
         }
     })
 }
 
-// 新建便签
+// 进入编辑模式
+const enterEditMode = () => {
+    isEditMode.value = true
+    nextTick(() => {
+        if (editorRef.value) {
+            editorRef.value.contentEditable = 'true'
+            editorRef.value.focus()
+        }
+    })
+}
+
+// 保存内容(手动保存)
+const handleManualSave = async () => {
+    await handleSave()
+    isEditMode.value = false
+    // 保存后禁用编辑
+    nextTick(() => {
+        if (editorRef.value) {
+            editorRef.value.contentEditable = 'false'
+        }
+    })
+    message.success('保存成功')
+}
+
+// 取消编辑
+const handleCancelEdit = () => {
+    dialog.warning({
+        title: '提示',
+        content: '是否放弃当前修改？',
+        positiveText: '放弃',
+        negativeText: '继续编辑',
+        onPositiveClick: () => {
+            isEditMode.value = false
+            // 恢复原始内容
+            nextTick(() => {
+                if (editorRef.value && currentNote.value) {
+                    editorRef.value.innerHTML = currentNote.value.content || ''
+                    editorRef.value.contentEditable = 'false'
+                }
+            })
+        }
+    })
+}
+
+// 新建便签 - 直接进入编辑模式
 const createNew = () => {
     const finalTitle = `便签${noteList.value.length + 1}`
     currentNote.value = { id: 0, title: finalTitle, content: '' }
     currentRepeatType.value = 'none'
     currentAdvanceDays.value = 0
     currentView.value = 'editor'
+    isEditMode.value = true // 新建时直接进入编辑模式
     nextTick(() => {
         if (editorRef.value) {
             editorRef.value.innerHTML = ''
+            editorRef.value.contentEditable = 'true'
             editorRef.value.focus()
         }
     })
@@ -516,15 +596,38 @@ const saveMobileTitle = async () => {
 // 关闭
 const handleClose = () => {
     if (currentView.value === 'editor') {
-        // 在编辑页，先保存然后返回列表
-        handleSave()
-        currentView.value = 'list'
+        // 在编辑页，如果在编辑模式且有修改，提示保存
+        if (isEditMode.value) {
+            dialog.warning({
+                title: '提示',
+                content: '是否保存当前修改？',
+                positiveText: '保存',
+                negativeText: '不保存',
+                onPositiveClick: async () => {
+                    await handleSave()
+                    currentView.value = 'list'
+                    isEditMode.value = false
+                },
+                onNegativeClick: () => {
+                    currentView.value = 'list'
+                    isEditMode.value = false
+                    // 恢复原始内容
+                    nextTick(() => {
+                        if (editorRef.value && currentNote.value) {
+                            editorRef.value.innerHTML = currentNote.value.content || ''
+                        }
+                    })
+                }
+            })
+        } else {
+            // 查看模式直接返回
+            currentView.value = 'list'
+        }
     } else if (currentView.value === 'remind') {
         // 在提醒页，直接返回编辑页
         currentView.value = 'editor'
     } else {
         // 在列表页，关闭整个记事本
-        handleSave()
         emit('update:visible', false)
     }
 }
@@ -532,8 +635,32 @@ const handleClose = () => {
 // 返回上一级
 const goBack = () => {
     if (currentView.value === 'editor') {
-        handleSave()
-        currentView.value = 'list'
+        // 如果在编辑模式，提示保存
+        if (isEditMode.value) {
+            dialog.warning({
+                title: '提示',
+                content: '是否保存当前修改？',
+                positiveText: '保存',
+                negativeText: '不保存',
+                onPositiveClick: async () => {
+                    await handleSave()
+                    currentView.value = 'list'
+                    isEditMode.value = false
+                },
+                onNegativeClick: () => {
+                    currentView.value = 'list'
+                    isEditMode.value = false
+                    // 恢复原始内容
+                    nextTick(() => {
+                        if (editorRef.value && currentNote.value) {
+                            editorRef.value.innerHTML = currentNote.value.content || ''
+                        }
+                    })
+                }
+            })
+        } else {
+            currentView.value = 'list'
+        }
     } else if (currentView.value === 'remind') {
         currentView.value = 'editor'
     }
@@ -732,9 +859,8 @@ const deleteNote = (note: NotepadInfo) => {
 watch(() => props.visible, (val) => {
     if (val) {
         initData()
-    } else {
-        handleSave()
     }
+    // 关闭时不再自动保存，由用户手动控制
 })
 
 const initData = async () => {
@@ -799,20 +925,77 @@ defineExpose({ refreshData: loadList })
   -webkit-tap-highlight-color: transparent;
 }
 
+// 列表页标题居中
 .mobile-header {
   position: relative;
   justify-content: center;
 }
 
-.header-actions {
+// 列表页按钮绝对定位
+.mobile-header .header-actions {
   position: absolute;
   right: 16px;
   top: 50%;
   transform: translateY(-50%);
+}
+
+// 编辑页和提醒页按钮正常布局
+.mobile-editor-header .header-actions,
+.mobile-remind-header .header-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   z-index: 1;
+}
+
+// 保存按钮
+.save-btn {
+  padding: 6px 12px;
+  background: #007aff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  touch-action: manipulation;
+  
+  &:active {
+    opacity: 0.7;
+    transform: scale(0.95);
+  }
+}
+
+// 取消编辑按钮
+.cancel-edit-btn {
+  padding: 6px 12px;
+  background: #f5f5f7;
+  color: #1d1d1f;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  touch-action: manipulation;
+  
+  &:active {
+    opacity: 0.7;
+    transform: scale(0.95);
+  }
+}
+
+.mobile-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #fff;
+  border-bottom: 1px solid #e5e5ea;
+  position: relative;
 }
 
 .nav-left {
@@ -820,6 +1003,7 @@ defineExpose({ refreshData: loadList })
   align-items: center;
   gap: 0;
   flex: 1;
+  min-width: 0; // 允许flex子元素收缩
 }
 
 .back-icon {
@@ -878,9 +1062,32 @@ defineExpose({ refreshData: loadList })
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+  transition: all 0.2s;
+  flex: 1; // 占据剩余空间
+  min-width: 0; // 允许收缩
   
   &:active {
     opacity: 0.7;
+  }
+  
+  // 编辑模式下显示可编辑提示
+  &.editable {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    
+    &::after {
+      content: '单击编辑';
+      font-size: 11px;
+      font-weight: normal;
+      color: #86868b;
+      opacity: 0.6;
+      white-space: nowrap;
+    }
+    
+    &:active::after {
+      opacity: 1;
+    }
   }
 }
 
@@ -1113,6 +1320,13 @@ defineExpose({ refreshData: loadList })
   &:empty:before {
     content: attr(placeholder);
     color: #86868b;
+  }
+  
+  // 只读模式样式
+  &.readonly {
+    background: #fafafa;
+    cursor: default;
+    user-select: text;
   }
 }
 
@@ -1365,10 +1579,16 @@ defineExpose({ refreshData: loadList })
 
 .mobile-notepad-container.dark-mode .mobile-editor-content {
   color: rgba(255, 255, 255, 0.9);
+  background: #18181c;
 }
 
 .mobile-notepad-container.dark-mode .mobile-editor-content:empty:before {
   color: rgba(255, 255, 255, 0.52);
+}
+
+// 只读模式深色背景
+.mobile-notepad-container.dark-mode .mobile-editor-content.readonly {
+  background: #2c2c2e;
 }
 
 .mobile-notepad-container.dark-mode .remind-float-btn {
@@ -1410,5 +1630,15 @@ defineExpose({ refreshData: loadList })
 
 .mobile-notepad-container.dark-mode .cancel-btn:active {
   background: rgba(255, 69, 58, 0.15);
+}
+
+// 提醒选择器深色背景
+.mobile-notepad-container.dark-mode .remind-picker-overlay {
+  background: #18181c;
+}
+
+.mobile-notepad-container.dark-mode .remind-picker-box {
+  background: #1c1c20;
+  border-color: #2c2c32;
 }
 </style>
