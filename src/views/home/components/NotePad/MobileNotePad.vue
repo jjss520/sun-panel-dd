@@ -1663,6 +1663,7 @@ defineExpose({ refreshData: loadList })
 
 .mobile-notepad-container.dark-mode .remind-float-btn.active {
   background: #0a84ff;
+  color: white; /* 激活状态：白色图标 */
 }
 
 .mobile-notepad-container.dark-mode .radio-item {
