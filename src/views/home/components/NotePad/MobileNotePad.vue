@@ -258,7 +258,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { SvgIcon, SvgIconOnline } from '@/components/common'
 import { useMessage, useDialog, NDatePicker } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -287,8 +287,30 @@ const dialog = useDialog()
 const authStore = useAuthStore()
 
 // 检测深色模式
-const isDarkMode = computed(() => {
-  return document.documentElement.classList.contains('dark')
+const isDarkMode = ref(document.documentElement.classList.contains('dark'))
+
+// 监听 dark class 变化
+let observer: MutationObserver | null = null
+onMounted(async () => {
+    if (noteList.value.length === 0) {
+        await loadList()
+    }
+    
+    // 监听深色模式变化
+    observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.attributeName === 'class') {
+                isDarkMode.value = document.documentElement.classList.contains('dark')
+            }
+        })
+    })
+    observer.observe(document.documentElement, { attributes: true })
+})
+
+onUnmounted(() => {
+    if (observer) {
+        observer.disconnect()
+    }
 })
 const editorRef = ref<HTMLDivElement | null>(null)
 
@@ -466,6 +488,21 @@ watch(() => currentNote.value, (newNote) => {
         }
     }
 }, { deep: true })
+
+// 监听视图变化，从提醒页返回编辑页时恢复内容
+watch(() => currentView.value, (newView, oldView) => {
+    // 只在从提醒页返回编辑页时才需要恢复内容
+    if (newView === 'editor' && oldView === 'remind') {
+        // 使用 nextTick 等待编辑器DOM渲染完成
+        nextTick(() => {
+            if (editorRef.value && currentNote.value) {
+                editorRef.value.innerHTML = currentNote.value.content || ''
+                // 根据编辑模式设置可编辑状态
+                editorRef.value.contentEditable = isEditMode.value ? 'true' : 'false'
+            }
+        })
+    }
+})
 
 // 切换便签 - 进入查看模式
 const selectNote = (note: NotepadInfo) => {
@@ -668,6 +705,11 @@ const goBack = () => {
 
 // 打开提醒视图
 const openRemindView = () => {
+    // 进入提醒页前，先保存当前编辑器内容到 currentNote
+    if (editorRef.value && currentView.value === 'editor') {
+        currentNote.value.content = editorRef.value.innerHTML
+    }
+    
     currentRepeatType.value = currentNote.value.remindRepeat || 'none'
     
     if (currentNote.value.remindAdvanceDays !== undefined) {
@@ -695,6 +737,7 @@ const openRemindView = () => {
 
 // 取消提醒设置（不保存直接返回）
 const handleCancelRemindSetting = () => {
+    // 直接切换视图，由 watch 负责恢复编辑器内容
     currentView.value = 'editor'
 }
 
@@ -729,21 +772,36 @@ const setRemind = async (timestamp: number | null, autoClose: boolean = false) =
     try {
         const remindTime = timestamp ? formatLocalDateTime(new Date(timestamp)) : null
         
+        // 保存提醒设置时，使用 currentNote.value.content（已在进入提醒页前同步）
+        const contentToSave = currentNote.value.content || ''
+        
         await saveNotepadContent({
             id: currentNote.value.id,
             title: currentNote.value.title || '',
-            content: currentNote.value.content || '',
+            content: contentToSave,
             remindTime: remindTime,
             remindStatus: remindTime ? 0 : 2,
             remindRepeat: currentRepeatType.value,
             remindAdvanceDays: currentAdvanceDays.value
         })
         
+        // 只更新提醒相关字段，不覆盖整个 currentNote 对象
         currentNote.value.remindTime = remindTime || undefined
         currentNote.value.remindStatus = remindTime ? 0 : 2
         currentNote.value.remindRepeat = currentRepeatType.value
         currentNote.value.remindAdvanceDays = currentAdvanceDays.value
-        await loadList()
+        // 确保 content 不被覆盖
+        currentNote.value.content = contentToSave
+        
+        // 更新本地缓存中的便签内容
+        const index = noteList.value.findIndex(n => n.id === currentNote.value.id)
+        if (index !== -1) {
+            noteList.value[index].remindTime = remindTime || undefined
+            noteList.value[index].remindStatus = remindTime ? 0 : 2
+            noteList.value[index].remindRepeat = currentRepeatType.value
+            noteList.value[index].remindAdvanceDays = currentAdvanceDays.value
+            noteList.value[index].content = contentToSave
+        }
         
         emit('remindStatusChanged', currentNote.value.id)
         
@@ -1288,9 +1346,9 @@ defineExpose({ refreshData: loadList })
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: #007aff;
+  background: #f5f5f7; /* 浅色模式：灰色底色 */
   border: none;
-  color: white;
+  color: #007aff; /* 图标保持蓝色 */
   font-size: 28px;
   cursor: pointer;
   display: flex;
@@ -1349,13 +1407,14 @@ defineExpose({ refreshData: loadList })
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: white;
+  background: white; /* 浅色模式：白色底色 */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   font-size: 24px;
+  color: #007aff; /* 图标保持蓝色 */
   
   &:active {
     transform: scale(0.95);
@@ -1551,8 +1610,8 @@ defineExpose({ refreshData: loadList })
 }
 
 .mobile-notepad-container.dark-mode .action-icon,
-.mobile-notepad-container.dark-mode .remind-icon,
 .mobile-notepad-container.dark-mode .delete-icon,
+.mobile-notepad-container.dark-mode .remind-icon,
 .mobile-notepad-container.dark-mode .mobile-note-item-time,
 .mobile-notepad-container.dark-mode .footer-text,
 .mobile-notepad-container.dark-mode .search-icon,
@@ -1593,6 +1652,12 @@ defineExpose({ refreshData: loadList })
 
 .mobile-notepad-container.dark-mode .remind-float-btn {
   background: #1c1c20;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.mobile-notepad-container.dark-mode .remind-float-btn {
+  background: #1c1c20; /* 深色模式：深色底色 */
+  color: #0a84ff; /* 图标保持蓝色 */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
@@ -1640,5 +1705,11 @@ defineExpose({ refreshData: loadList })
 .mobile-notepad-container.dark-mode .remind-picker-box {
   background: #1c1c20;
   border-color: #2c2c32;
+}
+
+// 新建按钮：底色随深浅模式变化，但图标保持蓝色
+.mobile-notepad-container.dark-mode .new-note-btn {
+  background: #2c2c32; /* 深色模式：深色底色 */
+  color: #0a84ff; /* 图标保持蓝色 */
 }
 </style>

@@ -321,6 +321,21 @@ watch(() => currentNote.value, (newNote) => {
     }
 }, { deep: true })
 
+// 监听视图变化，从提醒页返回编辑页时恢复内容
+watch(() => showRemindPicker.value, (newValue) => {
+    if (!newValue && editorRef.value && currentNote.value) {
+        // 从提醒页返回时，恢复编辑器内容
+        nextTick(() => {
+            if (editorRef.value) {
+                editorRef.value.innerHTML = currentNote.value.content || ''
+                // 根据编辑模式设置可编辑状态
+                editorRef.value.contentEditable = isEditMode.value ? 'true' : 'false'
+                bindFileDownloadEvents()
+            }
+        })
+    }
+})
+
 // 阻止编辑器区域的拖动
 const preventEditorDrag = (e: MouseEvent) => {
     e.stopPropagation()
@@ -837,6 +852,12 @@ const setRemind = async (timestamp: number | null, autoClose: boolean = false) =
         const remindTime = timestamp ? formatLocalDateTime(new Date(timestamp)) : null
         console.log('[NotePad] formatLocalDateTime 结果:', remindTime)
         
+        // 保存提醒设置时，保留当前的编辑器内容
+        let contentToSave = currentNote.value.content || ''
+        if (editorRef.value) {
+            contentToSave = editorRef.value.innerHTML
+        }
+        
         console.log('[NotePad] 准备保存的数据:', {
             id: currentNote.value.id,
             title: currentNote.value.title,
@@ -849,7 +870,7 @@ const setRemind = async (timestamp: number | null, autoClose: boolean = false) =
         await saveNotepadContent({
             id: currentNote.value.id,
             title: currentNote.value.title || '',
-            content: currentNote.value.content || '',
+            content: contentToSave,
             remindTime: remindTime,
             remindStatus: remindTime ? 0 : 2,  // 有时间为等待触发(0)，无时间为已结束(2)
             remindRepeat: currentRepeatType.value,
@@ -861,7 +882,15 @@ const setRemind = async (timestamp: number | null, autoClose: boolean = false) =
         currentNote.value.remindStatus = remindTime ? 0 : 2  // 有时间为等待触发(0)，无时间为已结束(2)
         currentNote.value.remindRepeat = currentRepeatType.value
         currentNote.value.remindAdvanceDays = currentAdvanceDays.value
-        await loadList()
+        
+        // 更新本地缓存中的便签内容
+        const index = noteList.value.findIndex(n => n.id === currentNote.value.id)
+        if (index !== -1) {
+            noteList.value[index].remindTime = remindTime || undefined
+            noteList.value[index].remindStatus = remindTime ? 0 : 2
+            noteList.value[index].remindRepeat = currentRepeatType.value
+            noteList.value[index].remindAdvanceDays = currentAdvanceDays.value
+        }
         
         // 通知父组件清除已提醒记录（无论是设置新提醒还是取消提醒）
         emit('remindStatusChanged', currentNote.value.id)
@@ -1363,9 +1392,9 @@ const initData = async () => {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #007aff;
+  background: #f5f5f7; /* 浅色模式：灰色底色 */
   border: none;
-  color: white;
+  color: #007aff; /* 图标保持蓝色 */
   font-size: 24px;
   cursor: pointer;
   display: flex;
@@ -1567,12 +1596,13 @@ const initData = async () => {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: white;
+  background: white; /* 浅色模式：白色底色 */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  color: #007aff; /* 图标保持蓝色 */
   transition: all 0.2s;
   
   &:hover {
@@ -1588,7 +1618,8 @@ const initData = async () => {
 
 // 深色模式适配
 .dark .remind-float-btn {
-  background: #2c2c2e;
+  background: #2c2c32; /* 深色模式：深色底色 */
+  color: #0a84ff; /* 图标保持蓝色 */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   
   &:hover {
@@ -1929,8 +1960,8 @@ const initData = async () => {
 }
 
 .notepad-container.dark-mode .action-icon,
-.notepad-container.dark-mode .remind-icon,
 .notepad-container.dark-mode .delete-icon,
+.notepad-container.dark-mode .remind-icon,
 .notepad-container.dark-mode .note-item-time,
 .notepad-container.dark-mode .footer-text,
 .notepad-container.dark-mode .search-icon,
@@ -1980,13 +2011,14 @@ const initData = async () => {
 }
 
 .notepad-container.dark-mode .remind-float-btn {
-  background: #007aff;
-  color: white;
-  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+  background: #2c2c32; /* 深色模式：深色底色 */
+  color: #0a84ff; /* 图标保持蓝色 */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .notepad-container.dark-mode .remind-float-btn.active {
   background: #0a84ff;
+  color: white;
 }
 
 .notepad-container.dark-mode .remind-picker {
@@ -2015,5 +2047,11 @@ const initData = async () => {
 .notepad-container.dark-mode .close-picker-btn:hover {
   background: rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.9);
+}
+
+// 新建按钮：底色随深浅模式变化，但图标保持蓝色
+.notepad-container.dark-mode .new-note-btn {
+  background: #2c2c32; /* 深色模式：深色底色 */
+  color: #0a84ff; /* 图标保持蓝色 */
 }
 </style>
