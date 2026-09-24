@@ -10,6 +10,7 @@ import { edit as addGroup, getList as getGroupList } from '@/api/panel/itemIconG
 import { ss } from '@/utils/storage/local'
 import { addMultiple as addMultipleIcons, getListByGroupId } from '@/api/panel/itemIcon'
 import { getNotepadList, saveNotepadContent, deleteNotepad, type NotepadInfo } from '@/api/panel/notepad'
+import { getList as getPageList, edit as addPage } from '@/api/panel/itemPage'
 
 import { t } from '@/locales'
 
@@ -30,8 +31,8 @@ const debug = ref(false)
 
 const importObj = ref<ImportJsonResult | null> (null)
 
-const importItems = ref<string[]>(['icons', 'notepads']) // 当前软件版本支持导入导出的项目
-const checkedItems = ref<string[]>(['icons', 'notepads']) // 当前准备导入的项目
+const importItems = ref<string[]>(['icons', 'notepads', 'pages']) // 当前软件版本支持导入导出的项目
+const checkedItems = ref<string[]>(['icons', 'notepads', 'pages']) // 当前准备导入的项目
 
 // 导入图标
 async function importIcons(): Promise<string | null> {
@@ -45,10 +46,11 @@ async function importIcons(): Promise<string | null> {
     for (let i = 0; i < groups.length; i++) {
       const element = groups[i]
 
-      // 创建组得到组id
+      // 创建组得到组id，包含pageId字段
       const createGroupResponse = await addGroup<Panel.ItemIconGroup>({
         title: element.title,
         sort: element.sort,
+        pageId: element.pageId || undefined,  // 设置pageId
       })
 
       if (createGroupResponse.code === 0) {
@@ -92,6 +94,18 @@ async function importIcons(): Promise<string | null> {
       }
     }
 
+    // 导入完成后，清除页面缓存并触发刷新事件
+    console.log('[导入导出] 图标导入完成，触发页面刷新')
+    ss.remove('pageListCache')
+    // 清除所有图标列表缓存
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith('itemIconList_')) {
+        ss.remove(key)
+      }
+    })
+    // 触发页面更新事件，通知主页刷新
+    window.dispatchEvent(new CustomEvent('pagesUpdated'))
+
     return null
   }
   catch (error) {
@@ -115,6 +129,7 @@ async function exportIcons(): Promise<IconGroup[]> {
       const group: IconGroup = {
         title: element.title as string,
         sort: element.sort as 0,
+        pageId: element.pageId || undefined,  // 添加pageId字段
         children: [],
       }
 
@@ -222,6 +237,60 @@ async function exportNotepads(): Promise<import('@/utils/jsonImportExport').Note
   }
 }
 
+// 导入页面
+async function importPages(): Promise<string | null> {
+  const pages = importObj.value?.getPages()
+  
+  if (!pages || pages.length === 0)
+    return null
+  
+  try {
+    console.log(`[导入导出] 开始导入 ${pages.length} 个页面...`)
+    for (const page of pages) {
+      // 创建页面
+      const response = await addPage({
+        title: page.title,
+        icon: page.icon || '',
+        sort: page.sort || 9999,
+      })
+      
+      if (response.code !== 0) {
+        console.warn(`[导入导出] 创建页面 "${page.title}" 失败:`, response.msg)
+      }
+    }
+    
+    console.log('[导入导出] 页面导入完成')
+    return null
+  }
+  catch (error) {
+    if (error instanceof Error)
+      return `${t('common.failed')}: ${error.message}`
+    else
+      return t('common.unknownError')
+  }
+}
+
+// 导出页面
+async function exportPages(): Promise<import('@/utils/jsonImportExport').Page[]> {
+  try {
+    const response = await getPageList<Common.ListResponse<Panel.ItemPage[]>>()
+    
+    if (response.code === 0 && response.data && response.data.list) {
+      return response.data.list.map((page: Panel.ItemPage) => ({
+        title: page.title || '',
+        icon: page.icon || '',
+        sort: page.sort || 9999,
+      }))
+    }
+    
+    return []
+  }
+  catch (error) {
+    console.error('导出页面失败:', error)
+    return []
+  }
+}
+
 onMounted(() => {
   interface Version {
     versionName: string
@@ -306,6 +375,11 @@ async function handleStartExport() {
     exportResult.addNotepadsData(notepads)
   }
 
+  if (checkedItems.value.includes('pages')) {
+    const pages = await exportPages()
+    exportResult.addPagesData(pages)
+  }
+
   jsonData.value = exportResult.string()
   exportResult.exportFile()
   loading.value = false
@@ -316,6 +390,17 @@ async function handleStartExport() {
 // 开始导入
 async function handleStartImport() {
   loading.value = true
+  
+  // 先导入页面（因为分组需要pageId）
+  if (checkedItems.value.includes('pages')) {
+    const errMsg = await importPages()
+    if (errMsg !== null) {
+      ms.error(`${t('common.failed')}:${errMsg}`)
+      loading.value = false
+      importRoundModalShow.value = false
+      return
+    }
+  }
   
   if (checkedItems.value.includes('icons')) {
     const errMsg = await importIcons()
@@ -425,6 +510,7 @@ async function handleStartImport() {
 
       <NSpace justify="center" style="margin-top: 20px;">
         <NCheckboxGroup v-model:value="checkedItems">
+          <NCheckbox v-if="importItems.includes('pages')" value="pages" label="页面" />
           <NCheckbox v-if="importItems.includes('icons')" value="icons" :label="$t('apps.exportImport.moduleIcon')" />
           <NCheckbox v-if="importItems.includes('notepads')" value="notepads" :label="$t('apps.exportImport.moduleNotepad')" />
           <NCheckbox v-if="importItems.includes('style')" value="style" :label="$t('apps.exportImport.moduleStyle')" />
@@ -446,6 +532,7 @@ async function handleStartImport() {
 
       <NSpace justify="center" style="margin-top: 20px;">
         <NCheckboxGroup v-model:value="checkedItems">
+          <NCheckbox v-if="importItems.includes('pages')" value="pages" label="页面" />
           <NCheckbox v-if="importItems.includes('icons')" value="icons" :label="$t('apps.exportImport.moduleIcon')" />
           <NCheckbox v-if="importItems.includes('notepads')" value="notepads" :label="$t('apps.exportImport.moduleNotepad')" />
           <NCheckbox v-if="importItems.includes('style')" value="style" :label="$t('apps.exportImport.moduleStyle')" />

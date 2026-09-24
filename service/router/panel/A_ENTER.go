@@ -7,6 +7,7 @@ func Init(routerGroup *gin.RouterGroup) {
 	InitUserConfig(routerGroup)
 	InitUsersRouter(routerGroup)
 	InitItemIconGroup(routerGroup)
+	InitItemPage(routerGroup)
 	InitBookmark(routerGroup)
 	InitNotepad(routerGroup)
 	InitSearchEngine(routerGroup)

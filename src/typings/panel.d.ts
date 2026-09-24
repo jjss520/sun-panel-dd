@@ -27,6 +27,13 @@ declare namespace Panel {
         icon?: string
         title?: string
         sort?:number
+        pageId?: number  // 所属页面ID
+    }
+
+    interface ItemPage extends Common.InfoBase {
+        icon?: string
+        title?: string
+        sort?: number
     }
 
     interface ItemIcon {

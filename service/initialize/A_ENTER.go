@@ -152,6 +152,9 @@ func DatabaseConnect() {
 	
 	// 自动迁移：为 files 表添加 file_type 字段（如果不存在）
 	MigrateFileTypeField()
+	
+	// 自动迁移：多页功能 - 创建 item_pages 表和添加 page_id 字段
+	MigrateItemPagesTable()
 }
 
 // 命令行运行
@@ -270,5 +273,113 @@ func MigrateFileTypeField() {
 		global.Logger.Info("Successfully added file_type column to files table")
 	} else {
 		global.Logger.Info("file_type column already exists, skipping migration")
+	}
+}
+
+// MigrateItemPagesTable 自动迁移：多页功能 - 创建 item_pages 表和添加 page_id 字段
+func MigrateItemPagesTable() {
+	global.Logger.Info("Checking if item_pages table exists...")
+	
+	// 检查 item_pages 表是否存在
+	var tableCount int64
+	err := global.Db.Raw(`
+		SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='item_pages'
+	`).Count(&tableCount).Error
+	
+	if err != nil {
+		global.Logger.Warn("Failed to check item_pages table:", err)
+		return
+	}
+	
+	if tableCount == 0 {
+		// 表不存在，创建表
+		global.Logger.Info("Creating item_pages table...")
+		createTableSQL := `
+		CREATE TABLE IF NOT EXISTS "item_pages" (
+			"id" INTEGER PRIMARY KEY AUTOINCREMENT,
+			"title" TEXT DEFAULT '页面',
+			"icon" TEXT DEFAULT 'material-symbols:home-outline',
+			"sort" INTEGER DEFAULT 9999,
+			"user_id" INTEGER NOT NULL,
+			"created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
+			"updated_at" DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS "idx_user_sort" ON "item_pages" ("user_id", "sort");
+		`
+		if err := global.Db.Exec(createTableSQL).Error; err != nil {
+			global.Logger.Error("Failed to create item_pages table:", err)
+			return
+		}
+		global.Logger.Info("Successfully created item_pages table")
+	} else {
+		global.Logger.Info("item_pages table already exists")
+	}
+	
+	// 检查 item_icon_groups 表是否有 page_id 字段
+	global.Logger.Info("Checking if page_id column exists in item_icon_groups table...")
+	
+	// 先检查 item_icon_groups 表是否存在
+	var iconGroupsTableCount int64
+	err = global.Db.Raw(`
+		SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='item_icon_groups'
+	`).Count(&iconGroupsTableCount).Error
+	
+	if err != nil {
+		global.Logger.Warn("Failed to check item_icon_groups table:", err)
+		return
+	}
+	
+	if iconGroupsTableCount == 0 {
+		global.Logger.Info("item_icon_groups table does not exist yet, will add page_id when it's created")
+		return
+	}
+	
+	var count int64
+	err = global.Db.Raw(`
+		SELECT COUNT(*) FROM pragma_table_info('item_icon_groups') WHERE name='page_id'
+	`).Count(&count).Error
+	
+	if err != nil {
+		global.Logger.Warn("Failed to check page_id column:", err)
+		return
+	}
+	
+	if count == 0 {
+		// 字段不存在，执行迁移
+		global.Logger.Info("Adding page_id column to item_icon_groups table...")
+		if err := global.Db.Exec("ALTER TABLE item_icon_groups ADD COLUMN page_id INTEGER").Error; err != nil {
+			global.Logger.Error("Failed to add page_id column:", err)
+			return
+		}
+		
+		// 创建索引
+		global.Db.Exec("CREATE INDEX IF NOT EXISTS idx_page_id ON item_icon_groups (page_id)")
+		
+		// 数据迁移：为每个用户创建默认页面
+		global.Logger.Info("Creating default pages for users...")
+		global.Db.Exec(`
+			INSERT INTO item_pages (user_id, title, icon, sort)
+			SELECT DISTINCT user_id, '首页', 'material-symbols:home-outline', 1
+			FROM item_icon_groups
+			WHERE page_id IS NULL
+			GROUP BY user_id
+		`)
+		
+		// 将现有分组关联到对应的默认页面
+		global.Logger.Info("Linking existing groups to default pages...")
+		global.Db.Exec(`
+			UPDATE item_icon_groups
+			SET page_id = (
+				SELECT id FROM item_pages 
+				WHERE item_pages.user_id = item_icon_groups.user_id 
+				AND item_pages.sort = 1
+				LIMIT 1
+			)
+			WHERE page_id IS NULL
+		`)
+		
+		global.Logger.Info("Successfully added page_id column and migrated data")
+	} else {
+		global.Logger.Info("page_id column already exists, skipping migration")
 	}
 }

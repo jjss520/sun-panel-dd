@@ -26,6 +26,7 @@ export interface JsonStructure {
   appVersion: string
   icons?: any
   notepads?: NotepadItem[]
+  pages?: Page[]  // 页面信息
   // styleConfig: Panel.panelConfig
   md5: string
 }
@@ -46,7 +47,15 @@ export interface Icon {
 export interface IconGroup {
   title: string
   sort: number
+  pageId?: number  // 所属页面ID
   children: Icon[]
+}
+
+// 页面
+export interface Page {
+  title: string
+  icon?: string
+  sort: number
 }
 
 // 记事本项（包含提醒信息）
@@ -66,6 +75,7 @@ export interface NotepadItem {
 interface ExportJsonResult {
   addIconsData(datas: IconGroup[]): ExportJsonResult
   addNotepadsData(datas: NotepadItem[]): ExportJsonResult
+  addPagesData(datas: Page[]): ExportJsonResult
   exportFile(): void
   string(): string
 }
@@ -95,6 +105,12 @@ export function exportJson(appVersion?: string): ExportJsonResult {
     // 添加记事本信息
     addNotepadsData(datas: NotepadItem[]) {
       jsonData.notepads = datas
+      return this
+    },
+
+    // 添加页面信息
+    addPagesData(datas: Page[]) {
+      jsonData.pages = datas
       return this
     },
 
@@ -128,6 +144,7 @@ export interface ImportJsonResult {
   hasProperty: (key: string) => boolean
   geticons: () => IconGroup[] // 根据实际情况提供更具体的类型定义
   getNotepads: () => NotepadItem[] // 获取记事本数据
+  getPages: () => Page[] // 获取页面数据
 }
 
 // 导入json数据
@@ -166,6 +183,9 @@ export function importJsonString(jsonString: string): ImportJsonResult | null {
     },
     getNotepads: (): NotepadItem[] => {
       return jsonStruct.notepads || []
+    },
+    getPages: (): Page[] => {
+      return jsonStruct.pages || []
     },
   }
 }

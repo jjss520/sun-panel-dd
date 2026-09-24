@@ -5,6 +5,7 @@ type ApiPanel struct {
 	UserConfig    UserConfig
 	UsersApi      UsersApi
 	ItemIconGroup ItemIconGroup
+	ItemPage      ItemPage
 	Bookmark      Bookmark
 	SearchEngine  SearchEngine
 }

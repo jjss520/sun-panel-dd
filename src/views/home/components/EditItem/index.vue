@@ -11,6 +11,7 @@ interface Props {
   visible: boolean
   itemInfo: Panel.Info | null
   itemGroupId?: number
+  pageId?: number  // 当前页面ID
 }
 
 const props = defineProps<Props>()
@@ -142,13 +143,26 @@ watch(() => props.visible, (newValue) => {
   getGroupListOptions()
 })
 
-function getGroupListOptions() {
-  getGroupList<Common.ListResponse<Panel.ItemIconGroup[]>>().then(({ data, code, msg }) => {
+async function getGroupListOptions() {
+  try {
+    const { data, code, msg } = await getGroupList<Common.ListResponse<Panel.ItemIconGroup[]>>()
     if (code === 0) {
       itemIconGroupOptions.value = []
-
-      for (let i = 0; i < data.list.length; i++) {
-        const element = data.list[i]
+      
+      console.log('[EditItem] 加载分组列表', { total: data.list.length, pageId: props.pageId })
+      console.log('[EditItem] 分组详情:', data.list.map(g => ({ id: g.id, title: g.title, pageId: g.pageId })))
+      
+      // 过滤出属于当前页面的分组
+      const filteredGroups = data.list.filter(g => {
+        // 如果pageId匹配当前页面，或者pageId为null/undefined（归到第一个页面）
+        return g.pageId === props.pageId || 
+               ((g.pageId === null || g.pageId === undefined) && props.pageId === 1)
+      })
+      
+      console.log('[EditItem] 过滤后的分组:', filteredGroups.map(g => ({ id: g.id, title: g.title, pageId: g.pageId })))
+      
+      for (let i = 0; i < filteredGroups.length; i++) {
+        const element = filteredGroups[i]
         if (i === 0 && !model.value.itemIconGroupId) {
           model.value.itemIconGroupId = element.id
           restoreDefault.itemIconGroupId = element.id
@@ -163,7 +177,9 @@ function getGroupListOptions() {
     else {
       ms.error(`${t('iconItem.getGroupFail')}:${msg}`)
     }
-  })
+  } catch (error) {
+    ms.error(t('iconItem.getGroupFail'))
+  }
 }
 </script>
 

@@ -39,9 +39,14 @@ const apps = ref<App[]>([
     icon: 'ion-color-palette-outline',
   },
   {
+    name: t('apps.pageManage.appName') || '页面管理',
+    componentName: 'PageManage',
+    icon: 'material-symbols-ad-group-outline-rounded',
+  },
+  {
     name: t('apps.itemGroupManage.appName'),
     componentName: 'ItemGroupManage',
-    icon: 'material-symbols-ad-group-outline-rounded',
+    icon: 'carbon--group-presentation',
   },
   {
     name: t('apps.uploadsFileManager.appName'),

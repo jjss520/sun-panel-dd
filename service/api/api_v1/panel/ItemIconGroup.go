@@ -28,16 +28,36 @@ func (a *ItemIconGroup) Edit(c *gin.Context) {
 	req.UserId = userInfo.ID
 
 	if req.ID != 0 {
-		// 修改
-		updateField := []string{"IconJson", "Icon", "Title", "Url", "LanUrl", "Description", "OpenMethod", "GroupId", "UserId"}
-		if req.Sort != 0 {
-			updateField = append(updateField, "Sort")
+		// 修改 - 使用Map更新以支持PageId为NULL
+		updateData := map[string]interface{}{
+			"title":       req.Title,
+			"icon":        req.Icon,
+			"description": req.Description,
 		}
+		
+		// PageId可以为NULL,需要特殊处理
+		if req.PageId != nil {
+			updateData["page_id"] = *req.PageId
+		} else {
+			updateData["page_id"] = nil
+		}
+		
+		// Sort字段只在非0时更新
+		if req.Sort != 0 {
+			updateData["sort"] = req.Sort
+		}
+		
 		global.Db.Model(&models.ItemIconGroup{}).
-			Select(updateField).
-			Where("id=?", req.ID).Updates(&req)
+			Where("id=? AND user_id=?", req.ID, userInfo.ID).
+			Updates(updateData)
 	} else {
-		// 创建
+		// 创建 - 如果未指定pageId,自动关联到第一个页面
+		if req.PageId == nil || *req.PageId == 0 {
+			var firstPage models.ItemPage
+			if err := global.Db.Order("sort ASC, created_at ASC").Where("user_id=?", userInfo.ID).First(&firstPage).Error; err == nil {
+				req.PageId = &firstPage.ID
+			}
+		}
 		global.Db.Create(&req)
 	}
 

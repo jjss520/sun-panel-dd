@@ -163,6 +163,9 @@
       "deleteWarnText": "你确定删除此分组[{name}]，删除后此分组应用图标将丢失？",
       "groupName": "分组名称"
     },
+    "pageManage": {
+      "appName": "页面管理"
+    },
     "uploadsFileManager": {
       "alertText": "你可以在这里管理你上传过的壁纸和图标",
       "appName": "上传文件管理",

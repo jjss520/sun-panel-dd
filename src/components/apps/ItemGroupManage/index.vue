@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import type { FormInst, FormRules } from 'naive-ui'
-import { NButton, NCard, NForm, NFormItem, NInput, useDialog, useMessage } from 'naive-ui'
+import { NButton, NCard, NForm, NFormItem, NInput, NSelect, useDialog, useMessage } from 'naive-ui'
 import { VueDraggable } from 'vue-draggable-plus'
 import { deletes, edit, getList, saveSort } from '@/api/panel/itemIconGroup'
+import { getList as getPageList } from '@/api/panel/itemPage'
 import { RoundCardModal, SvgIcon } from '@/components/common'
 import { t } from '@/locales'
 import { ss } from '@/utils/storage/local'
@@ -22,8 +23,9 @@ const sortStatus = ref(false)
 
 const defaultMNodal = {
   title: '',
-  icon: 'material-symbols:folder-outline',
+  icon: 'carbon--group-presentation',
   sort: 9999,
+  pageId: undefined,
 }
 
 const editModalArg = ref<EditModalArg>({
@@ -42,17 +44,44 @@ const editModalArg = ref<EditModalArg>({
 })
 
 const groups = ref<Panel.ItemIconGroup[]>([])
+const pages = ref<Panel.ItemPage[]>([])
+const pageOptions = ref<{ label: string; value: number }[]>([])
 
 function handleAddGroup() {
   editModalArg.value.show = !editModalArg.value.show
+  editModalArg.value.editStatus = 1  // 设置为添加模式
+  editModalArg.value.model = { ...defaultMNodal }  // 重置表单
   // Clear group list cache
   ss.remove('groupListCache')
 }
 
 function handleEditGroup(groupInfo: Panel.ItemIconGroup) {
   editModalArg.value.show = true
-  editModalArg.value.model = groupInfo
+  // 深拷贝,确保pageId正确传递
+  editModalArg.value.model = {
+    id: groupInfo.id,
+    title: groupInfo.title || '',
+    icon: groupInfo.icon || 'carbon--group-presentation',
+    sort: groupInfo.sort || 9999,
+    pageId: groupInfo.pageId || undefined,
+  }
   editModalArg.value.editStatus = 2
+}
+
+// 加载页面列表
+async function loadPages() {
+  try {
+    const res = await getPageList<Common.ListResponse<Panel.ItemPage[]>>()
+    if (res.code === 0) {
+      pages.value = res.data.list
+      pageOptions.value = pages.value.map(page => ({
+        label: page.title || '未命名',
+        value: page.id as number,
+      }))
+    }
+  } catch (error) {
+    console.error('Failed to load pages:', error)
+  }
 }
 
 function handleDragSort() {
@@ -74,6 +103,12 @@ function handleSaveSort() {
       // 清除分组列表缓存
       ss.remove('groupListCache')
       sortStatus.value = false
+      
+      // 触发页面更新事件，通知主页和其他组件刷新
+      window.dispatchEvent(new CustomEvent('pagesUpdated'))
+      
+      // 重新加载页面下拉框（确保顺序同步）
+      loadPages()
     }
     else {
       ms.error(`${t('common.saveFail')}:${msg}`)
@@ -96,6 +131,9 @@ function handleDelete(groupInfo: Panel.ItemIconGroup) {
             // 清除分组列表缓存
             ss.remove('groupListCache')
             refreshList()
+            
+            // 触发页面更新事件，通知主页和其他组件刷新
+            window.dispatchEvent(new CustomEvent('pagesUpdated'))
           }
         })
       }
@@ -107,15 +145,22 @@ function handleDelete(groupInfo: Panel.ItemIconGroup) {
 function handleSaveGroup() {
   formRef.value?.validate((errors) => {
     if (!errors) {
+      console.log('[分组管理] 保存分组', editModalArg.value.model)
       edit(editModalArg.value.model).then(({ code, msg }) => {
-        if (code !== 0)
+        if (code !== 0) {
           ms.error(msg)
-        
-        // 清除分组列表缓存
-        ss.remove('groupListCache')
-        refreshList()
-        editModalArg.value.show = false
-        editModalArg.value.model = { ...defaultMNodal }
+        } else {
+          ms.success(t('common.saveSuccess'))
+          // 清除分组列表缓存
+          ss.remove('groupListCache')
+          refreshList()
+          
+          // 触发页面更新事件，通知主页刷新
+          window.dispatchEvent(new CustomEvent('pagesUpdated'))
+          
+          editModalArg.value.show = false
+          editModalArg.value.model = { ...defaultMNodal }
+        }
       })
     }
     else { console.log(errors) }
@@ -128,8 +173,21 @@ function refreshList() {
   })
 }
 
+const handlePagesUpdated = () => {
+  console.log('[分组管理] 收到页面更新事件，重新加载页面列表')
+  loadPages()
+}
+
 onMounted(() => {
   refreshList()
+  loadPages()
+  
+  // 监听页面更新事件,重新加载页面列表
+  window.addEventListener('pagesUpdated', handlePagesUpdated)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('pagesUpdated', handlePagesUpdated)
 })
 </script>
 
@@ -161,8 +219,7 @@ onMounted(() => {
             <div class="flex" :class="sortStatus ? 'cursor-move' : ''">
               <div class="flex items-center">
                 <span class="mr-[10px]">
-                  <SvgIcon class="text-[20px]" icon="material-symbols:ad-group-outline-rounded" />
-                  <!-- <SvgIcon class="text-[20px]" :icon="item.icon" /> -->
+                  <SvgIcon class="text-[20px]" :icon="item.icon || 'carbon--group-presentation'" />
                 </span>
                 <span>
                   {{ item.title }}
@@ -195,10 +252,15 @@ onMounted(() => {
         <NFormItem path="title" :label="$t('apps.itemGroupManage.groupName')">
           <NInput v-model:value="editModalArg.model.title" type="text" :maxlength="20" show-count />
         </NFormItem>
-
-        <!-- <NFormItem path="name" label="昵称">
-          <NInput v-model:value="editModalArg.model" type="text" placeholder="请输入昵称" />
-        </NFormItem> -->
+        
+        <NFormItem path="pageId" label="所属页面">
+          <NSelect 
+            v-model:value="editModalArg.model.pageId" 
+            :options="pageOptions" 
+            placeholder="请选择页面"
+            clearable
+          />
+        </NFormItem>
       </NForm>
       <template #footer>
         <NButton type="success" size="small" class="float-right" @click="handleSaveGroup">

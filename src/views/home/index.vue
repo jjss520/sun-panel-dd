@@ -103,6 +103,19 @@ function scrollToGroup(index: number) {
   }
 }
 
+// 切换到指定页面
+function switchToPage(index: number) {
+  if (index < 0 || index >= pages.value.length) return
+  currentPageIndex.value = index
+  // 更新items和filterItems
+  items.value = pages.value[index]?.groups || []
+  filterItemsByNetworkMode()
+  // 重置滚动位置
+  if (scrollContainerRef.value) {
+    scrollContainerRef.value.scrollTop = 0
+  }
+}
+
 // 监听滚动，更新当前分组索引
 function handleScroll() {
   if (!scrollContainerRef.value) return
@@ -125,7 +138,16 @@ function handleScroll() {
 }
 
 // 组件挂载时添加滚动监听和鼠标监听
+const handlePagesUpdated = () => {
+  console.log('[主页] 收到页面更新事件，强制刷新')
+  loadPages(true)
+}
+
 onMounted(async () => {
+  // 未登录时强制刷新,清除缓存(避免显示上次登录的数据)
+  const shouldForceRefresh = authStore.visitMode !== VisitMode.VISIT_MODE_LOGIN
+  await loadPages(shouldForceRefresh)
+  
   // 监听滚动容器的滚动事件
   if (scrollContainerRef.value) {
     scrollContainerRef.value.addEventListener('scroll', handleScroll)
@@ -134,18 +156,134 @@ onMounted(async () => {
   // 使用事件委托监听鼠标移动
   document.addEventListener('mousemove', handleMouseMove)
   
+  // 监听页面更新事件(从页面管理返回时)
+  window.addEventListener('pagesUpdated', handlePagesUpdated)
+  
   // ✅ 启动 SSE 提醒推送并执行离线补偿
   if (authStore.visitMode === VisitMode.VISIT_MODE_LOGIN) {
-    // 1. 先把数据库里"挂起"的提醒弹出来（离线补偿）
+    // 1. 先把数据库里“挂起”的提醒弹出来（离线补偿）
     await checkInitialReminders()
     // 2. 再开启实时推送
     startRemindSSE()
   }
+  
+  // 添加触摸滑动支持
+  let touchStartX = 0
+  let touchStartY = 0
+  let touchEndX = 0
+  let touchEndY = 0
+  const minSwipeDistance = 50 // 最小滑动距离
+  const maxVerticalDistance = 30 // 最大垂直移动距离(超过则认为是滚动而非滑动)
+  
+  document.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX
+    touchStartY = e.touches[0].clientY
+  }, { passive: true })
+  
+  document.addEventListener('touchmove', (e) => {
+    if (!touchStartX) return
+  }, { passive: true })
+  
+  document.addEventListener('touchend', (e) => {
+    touchEndX = e.changedTouches[0].clientX
+    touchEndY = e.changedTouches[0].clientY
+    handleSwipe()
+    // 重置状态
+    touchStartX = 0
+    touchStartY = 0
+  }, { passive: true })
+  
+  function handleSwipe() {
+    if (!touchStartX || !touchEndX) return
+    
+    const swipeDistance = touchEndX - touchStartX
+    const verticalDistance = Math.abs(touchEndY - touchStartY)
+    
+    // 只有在水平滑动且垂直移动不大时才切换页面
+    if (Math.abs(swipeDistance) < minSwipeDistance || verticalDistance > maxVerticalDistance) {
+      return
+    }
+    
+    // 向左滑动（下一页）
+    if (swipeDistance < 0 && currentPageIndex.value < pages.value.length - 1) {
+      switchToPage(currentPageIndex.value + 1)
+    }
+    // 向右滑动（上一页）
+    else if (swipeDistance > 0 && currentPageIndex.value > 0) {
+      switchToPage(currentPageIndex.value - 1)
+    }
+  }
+  
+  // 添加鼠标拖拽滑动支持(PC端)
+  let mouseStartX = 0
+  let mouseStartY = 0
+  let isMouseDown = false
+  let isMouseDragging = false
+  
+  document.addEventListener('mousedown', (e) => {
+    // 只在主内容区域生效,排除按钮和链接
+    const target = e.target as HTMLElement
+    if (target.closest('button') || target.closest('a') || target.closest('.fixed-element')) {
+      return
+    }
+    
+    mouseStartX = e.clientX
+    mouseStartY = e.clientY
+    isMouseDown = true
+    isMouseDragging = false
+  })
+  
+  document.addEventListener('mousemove', (e) => {
+    if (!isMouseDown) return
+    
+    const diffX = Math.abs(e.clientX - mouseStartX)
+    const diffY = Math.abs(e.clientY - mouseStartY)
+    
+    // 如果移动距离超过10px,标记为拖拽
+    if (diffX > 10 || diffY > 10) {
+      isMouseDragging = true
+    }
+  })
+  
+  document.addEventListener('mouseup', (e) => {
+    if (!isMouseDown) return
+    
+    isMouseDown = false
+    
+    // 如果不是拖拽(只是点击),不处理
+    if (!isMouseDragging) {
+      isMouseDragging = false
+      return
+    }
+    
+    const mouseEndX = e.clientX
+    const mouseEndY = e.clientY
+    const swipeDistance = mouseEndX - mouseStartX
+    const verticalDistance = Math.abs(mouseEndY - mouseStartY)
+    
+    isMouseDragging = false
+    
+    // 只有在水平滑动且垂直移动不大时才切换页面
+    if (Math.abs(swipeDistance) < minSwipeDistance || verticalDistance > maxVerticalDistance) {
+      return
+    }
+    
+    // 向左滑动（下一页）
+    if (swipeDistance < 0 && currentPageIndex.value < pages.value.length - 1) {
+      switchToPage(currentPageIndex.value + 1)
+    }
+    // 向右滑动（上一页）
+    else if (swipeDistance > 0 && currentPageIndex.value > 0) {
+      switchToPage(currentPageIndex.value - 1)
+    }
+  })
 })
 
 // 组件卸载时清除定时器和SSE连接
 onUnmounted(() => {
   stopRemindSSE()
+  // 移除页面更新事件监听
+  window.removeEventListener('pagesUpdated', handlePagesUpdated)
 })
 
 // 鼠标移动事件处理
@@ -374,7 +512,7 @@ async function handleRefreshData() {
     })
 
     // 重新加载数据
-    getList()
+    await loadPages()
 
     // 刷新便签数据（仅登录状态下）
     if (authStore.visitMode === VisitMode.VISIT_MODE_LOGIN && notepadInstance.value) {
@@ -418,16 +556,34 @@ interface TreeItem {
 
 const settingModalShow = ref(false)
 
-const items = ref<ItemGroup[]>([])
+// 多页数据结构
+interface PageData {
+  pageInfo: Panel.ItemPage
+  groups: ItemGroup[]
+}
+
+const pages = ref<PageData[]>([])  // 所有页面
+const currentPageIndex = ref(0)     // 当前页面索引
+const items = ref<ItemGroup[]>([])  // 兼容旧代码,临时使用
 const filterItems = ref<ItemGroup[]>([])
+
+// 计算属性：当前页面的分组
+import { computed } from 'vue'
+const currentPageGroups = computed(() => {
+  if (pages.value.length === 0) return []
+  const currentPage = pages.value[currentPageIndex.value]
+  if (!currentPage) return []
+  return currentPage.groups || []
+})
 
 
 
 useWindowSize()
 
-// 从API导入获取书签列表的函数
+// 从 API导入获取书签列表的函数
 import { getList as getBookmarksList } from '@/api/panel/bookmark'
 import { getList as getGroupList } from '@/api/panel/itemIconGroup'
+import { getList as getPageList } from '@/api/panel/itemPage'
 import { ss } from '@/utils/storage/local'
 import { getSystemSettings } from '@/api/system/systemSetting'
 
@@ -437,6 +593,7 @@ const treeData = ref<any[]>([])
 // 缓存键名
 const BOOKMARKS_CACHE_KEY = 'bookmarksTreeCache'
 const GROUP_LIST_CACHE_KEY = 'groupListCache'
+const PAGE_LIST_CACHE_KEY = 'pageListCache'  // 页面列表缓存
 // 图标列表缓存键前缀
 const ITEM_ICON_LIST_CACHE_KEY_PREFIX = 'itemIconList_'
 
@@ -893,6 +1050,132 @@ function filterItemsByNetworkMode() {
   }
 }
 
+// 加载多页数据
+async function loadPages(forceRefresh = false) {
+  try {
+    // 如果强制刷新,清除缓存
+    if (forceRefresh) {
+      ss.remove(PAGE_LIST_CACHE_KEY)
+      // 清除所有图标缓存
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith(ITEM_ICON_LIST_CACHE_KEY_PREFIX)) {
+          ss.remove(key)
+        }
+      })
+    }
+    
+    // 1. 尝试从缓存读取页面列表
+    const cachedPages = ss.get(PAGE_LIST_CACHE_KEY)
+    if (!forceRefresh && cachedPages && cachedPages.length > 0) {
+      pages.value = cachedPages.map((pageData: any) => ({
+        pageInfo: pageData.pageInfo,
+        groups: pageData.groups || []
+      }))
+      
+      // 为每个分组加载图标
+      for (const page of pages.value) {
+        for (let i = 0; i < page.groups.length; i++) {
+          const group = page.groups[i]
+          if (group.id) {
+            updateGroupIcons(page, i, group.id)
+          }
+        }
+      }
+      
+      // 同步到items(兼容旧代码)
+      if (pages.value.length > 0) {
+        items.value = pages.value[currentPageIndex.value]?.groups || []
+        filterItemsByNetworkMode()
+      }
+      checkOfflineReminders()
+      return
+    }
+
+    // 2. 缓存中没有，请求接口
+    const pagesRes = await getPageList<Common.ListResponse<Panel.ItemPage[]>>()
+    if (pagesRes.code === 0) {
+      const pageList = pagesRes.data.list
+      
+      // 一次性获取所有分组
+      const groupsRes = await getGroupList<Common.ListResponse<ItemGroup[]>>()
+      const allGroups = groupsRes.code === 0 ? groupsRes.data.list : []
+      
+      console.log('[主页] 加载页面和分组', { pages: pageList.length, groups: allGroups.length })
+      console.log('[主页] 分组详情:', allGroups.map(g => ({ id: g.id, title: g.title, pageId: g.pageId })))
+      
+      // 为每个页面分配分组
+      pages.value = pageList.map((pageInfo) => {
+        // 过滤出属于当前页面的分组(pageId匹配或pageId为null的归到第一个页面)
+        const pageGroups = allGroups.filter(g => {
+          if (g.pageId === pageInfo.id) return true
+          // 如果pageId为null/undefined,归到第一个页面
+          if ((g.pageId === null || g.pageId === undefined) && pageList[0]?.id === pageInfo.id) return true
+          return false
+        })
+        
+        console.log(`[主页] 页面 "${pageInfo.title}" (ID:${pageInfo.id}) 有 ${pageGroups.length} 个分组`)
+        
+        return {
+          pageInfo,
+          groups: pageGroups
+        }
+      })
+      
+      // 缓存页面数据
+      ss.set(PAGE_LIST_CACHE_KEY, pages.value)
+      
+      // 为每个分组加载图标
+      for (const page of pages.value) {
+        for (let i = 0; i < page.groups.length; i++) {
+          const group = page.groups[i]
+          if (group.id) {
+            updateGroupIcons(page, i, group.id)
+          }
+        }
+      }
+      
+      // 同步到items
+      if (pages.value.length > 0) {
+        items.value = pages.value[0]?.groups || []
+        filterItemsByNetworkMode()
+      }
+      checkOfflineReminders()
+    }
+  } catch (error) {
+    console.error('Failed to load pages:', error)
+    // 出错时尝试使用缓存
+    const cachedPages = ss.get(PAGE_LIST_CACHE_KEY)
+    if (cachedPages && cachedPages.length > 0) {
+      pages.value = cachedPages
+      if (pages.value.length > 0) {
+        items.value = pages.value[currentPageIndex.value]?.groups || []
+        filterItemsByNetworkMode()
+      }
+    }
+  }
+}
+
+// 为分组加载图标
+async function updateGroupIcons(page: PageData, groupIndex: number, groupId: number) {
+  try {
+    const cacheKey = `${ITEM_ICON_LIST_CACHE_KEY_PREFIX}${groupId}`
+    const cachedData = ss.get(cacheKey)
+    
+    if (cachedData) {
+      page.groups[groupIndex].items = cachedData
+      return
+    }
+    
+    const res = await getListByGroupId<Common.ListResponse<Panel.ItemInfo[]>>(groupId)
+    if (res.code === 0) {
+      page.groups[groupIndex].items = res.data.list
+      ss.set(cacheKey, res.data.list)
+    }
+  } catch (error) {
+    console.error('Failed to load group icons:', error)
+  }
+}
+
 async function getList() {
   try {
     // 1. 首先尝试从缓存读取数据
@@ -1001,8 +1284,21 @@ onActivated(() => {
   // 延迟执行，优先保证页面切换流畅
   setTimeout(() => {
     loadBookmarkTree(false);
+    // 强制刷新页面数据(从页面管理返回时)
+    loadPages(true);
   }, 20);
 });
+
+// 监听登录状态变化
+watch(
+  () => authStore.visitMode,
+  (newMode, oldMode) => {
+    if (newMode !== oldMode) {
+      // 登录状态变化时强制刷新
+      loadPages(true)
+    }
+  }
+)
 
 function handleRightMenuSelect(key: string | number) {
   dropdownShow.value = false
@@ -1131,17 +1427,14 @@ function onClickoutside() {
   dropdownShow.value = false
 }
 
-function handleEditSuccess(item: Panel.ItemInfo) {
-  // 查找编辑的图标所属的分组
-  for (let i = 0; i < items.value.length; i++) {
-    const group = items.value[i]
-    if (group.id === item.itemIconGroupId) {
-      // 清除该分组的图标缓存
-      ss.remove(`${ITEM_ICON_LIST_CACHE_KEY_PREFIX}${item.itemIconGroupId}`)
-      break
-    }
+async function handleEditSuccess(item: Panel.ItemInfo) {
+  console.log('[主页] 图标编辑成功', item)
+  // 清除该分组的图标缓存
+  if (item.itemIconGroupId) {
+    ss.remove(`${ITEM_ICON_LIST_CACHE_KEY_PREFIX}${item.itemIconGroupId}`)
   }
-  getList()
+  // 强制刷新页面数据(多页模式)
+  await loadPages(true)
 }
 
 // function handleChangeNetwork(mode: PanelStateNetworkModeEnum) {
@@ -1520,7 +1813,7 @@ function getNetworkModeButtonIcon() {
     <div class="mask" :style="{ backgroundColor: `rgba(0,0,0,${panelState.panelConfig.backgroundMaskNumber})` }" />
     <div ref="scrollContainerRef" class="absolute w-full h-full overflow-auto" style="touch-action: pan-y; -webkit-overflow-scrolling: touch;">
       <div
-        class="p-2.5 mx-auto"
+        class="p-2.5 mx-auto page-content"
         :style="{
           marginTop: `${panelState.panelConfig.marginTop}%`,
           marginBottom: `${panelState.panelConfig.marginBottom}%`,
@@ -1579,9 +1872,9 @@ function getNetworkModeButtonIcon() {
             />
           </div>
 
-          <!-- 组纵向排列 -->
+          <!-- 组纵向排列 - 当前页面 -->
           <div
-            v-for="(itemGroup, itemGroupIndex) in filterItems" :key="itemGroupIndex"
+            v-for="(itemGroup, itemGroupIndex) in currentPageGroups" :key="itemGroupIndex"
             class="item-list mt-[50px]"
             :class="itemGroup.sortStatus ? 'shadow-2xl border shadow-[0_0_30px_10px_rgba(0,0,0,0.3)]  p-[10px] rounded-2xl' : ''"
             @mouseenter="handleSetHoverStatus(itemGroupIndex, true)"
@@ -1698,15 +1991,31 @@ function getNetworkModeButtonIcon() {
       </div>
     </div>
 
+    <!-- 页面指示器 -->
+    <div 
+      v-if="pages.length > 1" 
+      class="page-indicator"
+    >
+      <button 
+        v-for="(page, index) in pages" 
+        :key="page.pageInfo.id"
+        class="page-dot"
+        :class="{ 'page-dot-active': currentPageIndex === index }"
+        @click="switchToPage(index)"
+      >
+        <span class="page-tooltip">{{ page.pageInfo.title }}</span>
+      </button>
+    </div>
+
     <!-- 左侧分组导航条 -->
     <Transition name="fade">
       <div 
-        v-if="showGroupNav && filterItems.length > 0" 
+        v-if="showGroupNav && currentPageGroups.length > 0" 
         class="group-nav-sidebar"
       >
         <div class="group-nav-line">
           <div
-            v-for="(group, index) in filterItems"
+            v-for="(group, index) in currentPageGroups"
             :key="index"
             class="group-nav-dot"
             :class="{ 'group-nav-dot-active': currentGroupIndex === index }"
@@ -1810,7 +2119,13 @@ function getNetworkModeButtonIcon() {
       </div>
     </NBackTop>
 
-    <EditItem v-model:visible="editItemInfoShow" :item-info="editItemInfoData" :item-group-id="currentAddItenIconGroupId" @done="handleEditSuccess" />
+    <EditItem 
+      v-model:visible="editItemInfoShow" 
+      :item-info="editItemInfoData" 
+      :item-group-id="currentAddItenIconGroupId" 
+      :page-id="pages[currentPageIndex]?.pageInfo?.id"
+      @done="handleEditSuccess" 
+    />
 
     <!-- 弹窗 -->
     <NModal
@@ -1934,6 +2249,18 @@ html {
 
 .app-icon-text-shadow {
   text-shadow: 2px 2px 5px rgb(0, 0, 0);
+}
+
+/* 页面内容容器 - 确保最小高度让页脚始终在底部 */
+.page-content {
+  min-height: calc(100vh - 100px);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 应用盒子区域 - 让它占据剩余空间 */
+.page-content > div:last-child {
+  flex: 1;
 }
 
 .fixed-element {
@@ -2093,6 +2420,95 @@ html {
   z-index: 1000;
 }
 
+/* 页面指示器样式 */
+.page-indicator {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  padding: 6px 10px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.08) 100%);
+  backdrop-filter: blur(20px);
+  border-radius: 12px;
+  z-index: 999;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.15),
+    0 2px 8px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.page-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  padding: 0;
+  outline: none;
+}
+
+.page-dot:hover {
+  background: rgba(255, 255, 255, 0.6);
+  transform: scale(1.25);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
+}
+
+.page-dot-active {
+  width: 14px;
+  height: 5px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #fff 0%, rgba(255, 255, 255, 0.9) 100%);
+  box-shadow: 
+    0 0 12px rgba(255, 255, 255, 0.8),
+    0 0 24px rgba(255, 255, 255, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 
+      0 0 12px rgba(255, 255, 255, 0.8),
+      0 0 24px rgba(255, 255, 255, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+  50% {
+    box-shadow: 
+      0 0 16px rgba(255, 255, 255, 1),
+      0 0 32px rgba(255, 255, 255, 0.6),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+}
+
+.page-tooltip {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 2px 5px;
+  border-radius: 2px;
+  font-size: 10px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s ease;
+  pointer-events: none;
+}
+
+.page-dot:hover .page-tooltip {
+  opacity: 1;
+  visibility: visible;
+  bottom: 14px;
+}
+
 .group-nav-line {
   position: relative;
   display: flex;
@@ -2177,8 +2593,36 @@ html {
   opacity: 0;
 }
 
-/* 移动端隐藏导航条 */
+/* 移动端页面指示器样式优化 */
 @media (max-width: 768px) {
+  .page-indicator {
+    bottom: 18px;
+    padding: 6px 12px;
+    gap: 8px;
+    border-radius: 14px;
+  }
+
+  .page-dot {
+    width: 6px;
+    height: 6px;
+  }
+
+  .page-dot:hover {
+    transform: scale(1.3);
+  }
+
+  .page-dot-active {
+    width: 16px;
+    height: 6px;
+    border-radius: 3px;
+  }
+
+  .page-tooltip {
+    font-size: 10px;
+    padding: 2px 5px;
+  }
+
+  /* 移动端隐藏左侧导航条 */
   .group-nav-sidebar {
     display: none;
   }

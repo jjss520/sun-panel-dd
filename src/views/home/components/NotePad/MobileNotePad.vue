@@ -1159,7 +1159,7 @@ defineExpose({ refreshData: loadList })
 .mobile-editor-title-input {
   font-size: 18px;
   font-weight: 600;
-  color: #1d1d1f;
+  color: #1d1d1f; /* 浅色模式：黑色字体 */
   border: none;
   outline: none;
   background: transparent;
@@ -1606,6 +1606,11 @@ defineExpose({ refreshData: loadList })
 .mobile-notepad-container.dark-mode .mobile-remind-title,
 .mobile-notepad-container.dark-mode .mobile-note-item-title,
 .mobile-notepad-container.dark-mode .section-label {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+// 深色模式下编辑标题输入框颜色
+.mobile-notepad-container.dark-mode .mobile-editor-title-input {
   color: rgba(255, 255, 255, 0.9);
 }
 

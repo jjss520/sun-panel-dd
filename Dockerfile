@@ -1,6 +1,12 @@
 # build frontend
 FROM --platform=$BUILDPLATFORM node:22-alpine AS web_image
 
+# 支持构建时传入代理参数
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ENV http_proxy=${HTTP_PROXY}
+ENV https_proxy=${HTTPS_PROXY}
+
 RUN npm config set registry https://registry.npmmirror.com
 RUN npm install -g pnpm@8
 RUN pnpm config set registry https://registry.npmmirror.com
@@ -19,6 +25,12 @@ RUN pnpm run build
 # 临时解决方案:https://github.com/mattn/go-sqlite3/pull/1177)
 # sun-panel暂时解决方案使用golang:1.21-alpine3.18（因旧版本使用没问题，短期内较稳定） 
 FROM golang:1.21-alpine3.18 AS server_image
+
+# 支持构建时传入代理参数
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ENV http_proxy=${HTTP_PROXY}
+ENV https_proxy=${HTTPS_PROXY}
 
 WORKDIR /build
 COPY ./service .
