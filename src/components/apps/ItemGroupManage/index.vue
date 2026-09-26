@@ -84,6 +84,12 @@ async function loadPages() {
   }
 }
 
+// 根据pageId获取页面标题
+function getPageTitle(pageId: number): string {
+  const page = pages.value.find(p => p.id === pageId)
+  return page ? (page.title || '未命名') : ''
+}
+
 function handleDragSort() {
   sortStatus.value = true
 }
@@ -221,9 +227,12 @@ onUnmounted(() => {
                 <span class="mr-[10px]">
                   <SvgIcon class="text-[20px]" :icon="item.icon || 'carbon--group-presentation'" />
                 </span>
-                <span>
-                  {{ item.title }}
-                </span>
+                <div>
+                  <div>{{ item.title }}</div>
+                  <div v-if="item.pageId" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {{ getPageTitle(item.pageId) }}
+                  </div>
+                </div>
               </div>
               <div class="ml-auto">
                 <span>
