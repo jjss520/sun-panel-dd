@@ -2454,7 +2454,7 @@ html {
   align-items: center;
   gap: 6px;
   padding: 10px 12px;
-  z-index: 999;
+  z-index: 10000;
   width: fit-content;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.08) 100%);
   backdrop-filter: blur(20px);
