@@ -2281,6 +2281,7 @@ html {
   min-height: calc(100vh - 100px);
   display: flex;
   flex-direction: column;
+  padding-bottom: 80px; /* 为页面指示器预留空间 */
 }
 
 /* 应用盒子区域 - 让它占据剩余空间 */
