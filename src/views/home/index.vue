@@ -104,16 +104,31 @@ function scrollToGroup(index: number) {
 }
 
 // 切换到指定页面
+let pageTransitionDirection = ref<'left' | 'right'>('right') // 记录滑动方向
+
 function switchToPage(index: number) {
   if (index < 0 || index >= pages.value.length) return
-  currentPageIndex.value = index
+  
+  // 判断滑动方向
+  if (index > currentPageIndex.value) {
+    pageTransitionDirection.value = 'left' // 向左滑(下一页)
+  } else if (index < currentPageIndex.value) {
+    pageTransitionDirection.value = 'right' // 向右滑(上一页)
+  }
+  
   // 更新items和filterItems
   items.value = pages.value[index]?.groups || []
   filterItemsByNetworkMode()
+  
   // 重置滚动位置
   if (scrollContainerRef.value) {
     scrollContainerRef.value.scrollTop = 0
   }
+  
+  // 延迟更新索引以触发动画
+  setTimeout(() => {
+    currentPageIndex.value = index
+  }, 50)
 }
 
 // 监听滚动，更新当前分组索引
@@ -1873,125 +1888,133 @@ function getNetworkModeButtonIcon() {
           </div>
 
           <!-- 组纵向排列 - 当前页面 -->
-          <div
-            v-for="(itemGroup, itemGroupIndex) in currentPageGroups" :key="itemGroupIndex"
-            class="item-list mt-[50px]"
-            :class="itemGroup.sortStatus ? 'shadow-2xl border shadow-[0_0_30px_10px_rgba(0,0,0,0.3)]  p-[10px] rounded-2xl' : ''"
-            @mouseenter="handleSetHoverStatus(itemGroupIndex, true)"
-            @mouseleave="handleSetHoverStatus(itemGroupIndex, false)"
+          <Transition 
+            :name="pageTransitionDirection === 'left' ? 'page-slide' : 'page-slide-reverse'" 
+            mode="out-in"
           >
-            <!-- 分组标题 -->
-            <div class="text-white text-xl font-extrabold mb-[20px] ml-[10px] flex items-center">
-              <span class="group-title text-shadow">
-                {{ itemGroup.title }}
-              </span>
+            <div :key="currentPageIndex" class="page-container">
               <div
-                v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN && panelState.networkMode === PanelStateNetworkModeEnum.edit"
-                class="group-buttons ml-2 delay-100 transition-opacity flex"
+                v-for="(itemGroup, itemGroupIndex) in currentPageGroups" :key="itemGroupIndex"
+                class="item-list mt-[50px]"
+                :class="itemGroup.sortStatus ? 'shadow-2xl border shadow-[0_0_30px_10px_rgba(0,0,0,0.3)]  p-[10px] rounded-2xl' : ''"
+                @mouseenter="handleSetHoverStatus(itemGroupIndex, true)"
+                @mouseleave="handleSetHoverStatus(itemGroupIndex, false)"
               >
-                <span class="mr-2 cursor-pointer" :title="t('common.add')" @click="handleAddItem(itemGroup.id)">
-                  <SvgIcon class="text-white font-xl" icon="typcn:plus" />
-                </span>
-                <span class="mr-2 cursor-pointer " :title="t('common.sort')" @click="handleSetSortStatus(itemGroup, !itemGroup.sortStatus)">
-                  <SvgIcon class="text-white font-xl" icon="ri:drag-drop-line" />
-                </span>
-              </div>
-            </div>
-
-            <!-- 详情图标 -->
-            <div v-if="panelState.panelConfig.iconStyle === PanelPanelConfigStyleEnum.info">
-              <div v-if="itemGroup.items">
-                <VueDraggable
-                  v-model="itemGroup.items" item-key="sort" :animation="300"
-                  class="icon-info-box"
-                  filter=".not-drag"
-                  :disabled="!itemGroup.sortStatus"
-                  @end="handleSaveSort(itemGroup)"
-                >
-                  <div v-for="item, index in itemGroup.items" :key="index" :title="item.description" 
-                    @contextmenu="(e) => !isMobile && handleContextMenu(e, itemGroupIndex, item)"
-                    @touchstart="(e) => handleTouchStart(e, itemGroupIndex, item)"
-                    @touchend="handleTouchEnd()"
-                    @touchmove="handleTouchEnd()"
+                <!-- 分组标题 -->
+                <div class="text-white text-xl font-extrabold mb-[20px] ml-[10px] flex items-center">
+                  <span class="group-title text-shadow">
+                    {{ itemGroup.title }}
+                  </span>
+                  <div
+                    v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN && panelState.networkMode === PanelStateNetworkModeEnum.edit"
+                    class="group-buttons ml-2 delay-100 transition-opacity flex"
                   >
-                    <AppIcon
-                      :class="itemGroup.sortStatus ? 'cursor-move' : 'cursor-pointer'"
-                      :item-info="item"
-                      :icon-text-color="panelState.panelConfig.iconTextColor"
-                      :icon-text-info-hide-description="panelState.panelConfig.iconTextInfoHideDescription || false"
-                      :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
-                      :style="0"
-                      @click="handleItemClick(itemGroupIndex, item)"
-                    />
+                    <span class="mr-2 cursor-pointer" :title="t('common.add')" @click="handleAddItem(itemGroup.id)">
+                      <SvgIcon class="text-white font-xl" icon="typcn:plus" />
+                    </span>
+                    <span class="mr-2 cursor-pointer " :title="t('common.sort')" @click="handleSetSortStatus(itemGroup, !itemGroup.sortStatus)">
+                      <SvgIcon class="text-white font-xl" icon="ri:drag-drop-line" />
+                    </span>
                   </div>
+                </div>
 
-                  <div v-if="itemGroup.items.length === 0" class="not-drag">
-                    <AppIcon
-                      :class="itemGroup.sortStatus ? 'cursor-move' : 'cursor-pointer'"
-                      :item-info="{ icon: { itemType: 3, text: 'subway:add' }, title: t('common.add'), url: '', openMethod: 0 }"
-                      :icon-text-color="panelState.panelConfig.iconTextColor"
-                      :icon-text-info-hide-description="panelState.panelConfig.iconTextInfoHideDescription || false"
-                      :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
-                      :style="0"
-                      @click="handleAddItem(itemGroup.id)"
-                    />
+                <!-- 详情图标 -->
+                <div v-if="panelState.panelConfig.iconStyle === PanelPanelConfigStyleEnum.info">
+                  <div v-if="itemGroup.items">
+                    <VueDraggable
+                      v-model="itemGroup.items" item-key="sort" :animation="300"
+                      class="icon-info-box"
+                      filter=".not-drag"
+                      :disabled="!itemGroup.sortStatus"
+                      @end="handleSaveSort(itemGroup)"
+                    >
+                      <div v-for="item, index in itemGroup.items" :key="index" :title="item.description" 
+                        @contextmenu="(e) => !isMobile && handleContextMenu(e, itemGroupIndex, item)"
+                        @touchstart="(e) => handleTouchStart(e, itemGroupIndex, item)"
+                        @touchend="handleTouchEnd()"
+                        @touchmove="handleTouchEnd()"
+                      >
+                        <AppIcon
+                          :class="itemGroup.sortStatus ? 'cursor-move' : 'cursor-pointer'"
+                          :item-info="item"
+                          :icon-text-color="panelState.panelConfig.iconTextColor"
+                          :icon-text-info-hide-description="panelState.panelConfig.iconTextInfoHideDescription || false"
+                          :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
+                          :style="0"
+                          @click="handleItemClick(itemGroupIndex, item)"
+                        />
+                      </div>
+
+                      <div v-if="itemGroup.items.length === 0" class="not-drag">
+                        <AppIcon
+                          :class="itemGroup.sortStatus ? 'cursor-move' : 'cursor-pointer'"
+                          :item-info="{ icon: { itemType: 3, text: 'subway:add' }, title: t('common.add'), url: '', openMethod: 0 }"
+                          :icon-text-color="panelState.panelConfig.iconTextColor"
+                          :icon-text-info-hide-description="panelState.panelConfig.iconTextInfoHideDescription || false"
+                          :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
+                          :style="0"
+                          @click="handleAddItem(itemGroup.id)"
+                        />
+                      </div>
+                    </VueDraggable>
                   </div>
-                </VueDraggable>
+                </div>
+
+                <!-- APP图标宫型盒子 -->
+                <div v-if="panelState.panelConfig.iconStyle === PanelPanelConfigStyleEnum.icon">
+                  <div v-if="itemGroup.items">
+                    <VueDraggable
+                      v-model="itemGroup.items" item-key="sort" :animation="300"
+                      class="icon-small-box"
+
+                      filter=".not-drag"
+                      :disabled="!itemGroup.sortStatus"
+                      @end="handleSaveSort(itemGroup)"
+                    >
+                      <div v-for="item, index in itemGroup.items" :key="index" :title="item.description" 
+                        @contextmenu="(e) => !isMobile && handleContextMenu(e, itemGroupIndex, item)"
+                        @touchstart="(e) => handleTouchStart(e, itemGroupIndex, item)"
+                        @touchend="handleTouchEnd()"
+                        @touchmove="handleTouchEnd()"
+                      >
+                        <AppIcon
+                          :class="itemGroup.sortStatus ? 'cursor-move' : 'cursor-pointer'"
+                          :item-info="item"
+                          :icon-text-color="panelState.panelConfig.iconTextColor"
+                          :icon-text-info-hide-description="!panelState.panelConfig.iconTextInfoHideDescription"
+                          :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
+                          :style="1"
+                          @click="handleItemClick(itemGroupIndex, item)"
+                        />
+                      </div>
+
+                      <div v-if="itemGroup.items.length === 0" class="not-drag">
+                        <AppIcon
+                          class="cursor-pointer"
+                          :item-info="{ icon: { itemType: 3, text: 'subway:add' }, title: $t('common.add'), url: '', openMethod: 0 }"
+                          :icon-text-color="panelState.panelConfig.iconTextColor"
+                          :icon-text-info-hide-description="!panelState.panelConfig.iconTextInfoHideDescription"
+                          :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
+                          :style="1"
+                          @click="handleAddItem(itemGroup.id)"
+                        />
+                      </div>
+                    </vuedraggable>
+                  </div>
+                </div>
+
+                <!-- 编辑栏 -->
+
               </div>
             </div>
-
-            <!-- APP图标宫型盒子 -->
-            <div v-if="panelState.panelConfig.iconStyle === PanelPanelConfigStyleEnum.icon">
-              <div v-if="itemGroup.items">
-                <VueDraggable
-                  v-model="itemGroup.items" item-key="sort" :animation="300"
-                  class="icon-small-box"
-
-                  filter=".not-drag"
-                  :disabled="!itemGroup.sortStatus"
-                  @end="handleSaveSort(itemGroup)"
-                >
-                  <div v-for="item, index in itemGroup.items" :key="index" :title="item.description" 
-                    @contextmenu="(e) => !isMobile && handleContextMenu(e, itemGroupIndex, item)"
-                    @touchstart="(e) => handleTouchStart(e, itemGroupIndex, item)"
-                    @touchend="handleTouchEnd()"
-                    @touchmove="handleTouchEnd()"
-                  >
-                    <AppIcon
-                      :class="itemGroup.sortStatus ? 'cursor-move' : 'cursor-pointer'"
-                      :item-info="item"
-                      :icon-text-color="panelState.panelConfig.iconTextColor"
-                      :icon-text-info-hide-description="!panelState.panelConfig.iconTextInfoHideDescription"
-                      :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
-                      :style="1"
-                      @click="handleItemClick(itemGroupIndex, item)"
-                    />
-                  </div>
-
-                  <div v-if="itemGroup.items.length === 0" class="not-drag">
-                    <AppIcon
-                      class="cursor-pointer"
-                      :item-info="{ icon: { itemType: 3, text: 'subway:add' }, title: $t('common.add'), url: '', openMethod: 0 }"
-                      :icon-text-color="panelState.panelConfig.iconTextColor"
-                      :icon-text-info-hide-description="!panelState.panelConfig.iconTextInfoHideDescription"
-                      :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
-                      :style="1"
-                      @click="handleAddItem(itemGroup.id)"
-                    />
-                  </div>
-                </vuedraggable>
-              </div>
-            </div>
-
-            <!-- 编辑栏 -->
-
-          </div>
+          </Transition>
         </div>
-        <div class="mt-5 footer" v-html="panelState.panelConfig.footerHtml" />
+        
+        <div class="mt-2 footer" v-html="panelState.panelConfig.footerHtml" />
       </div>
     </div>
 
-    <!-- 页面指示器 -->
+    <!-- 页面指示器 - 放在容器外部最底部 -->
     <div 
       v-if="pages.length > 1" 
       class="page-indicator"
@@ -2423,26 +2446,65 @@ html {
 /* 页面指示器样式 */
 .page-indicator {
   position: fixed;
-  bottom: 30px;
+  bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
+  justify-content: center;
+  align-items: center;
   gap: 6px;
-  padding: 6px 10px;
+  padding: 10px 12px;
+  z-index: 999;
+  width: fit-content;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.08) 100%);
   backdrop-filter: blur(20px);
   border-radius: 12px;
-  z-index: 999;
   box-shadow: 
-    0 8px 32px rgba(0, 0, 0, 0.15),
-    0 2px 8px rgba(0, 0, 0, 0.1),
+    0 4px 16px rgba(0, 0, 0, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* 页面切换动画 */
+.page-container {
+  width: 100%;
+}
+
+/* 向左滑动（下一页）*/
+.page-slide-enter-active,
+.page-slide-leave-active {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.page-slide-enter-from {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+.page-slide-leave-to {
+  transform: translateX(-100%);
+  opacity: 0;
+}
+
+/* 向右滑动（上一页）*/
+.page-slide-reverse-enter-active,
+.page-slide-reverse-leave-active {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.page-slide-reverse-enter-from {
+  transform: translateX(-100%);
+  opacity: 0;
+}
+
+.page-slide-reverse-leave-to {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
 .page-dot {
-  width: 5px;
-  height: 5px;
+  width: 2.5px;
+  height: 2.5px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.3);
   border: none;
@@ -2460,9 +2522,9 @@ html {
 }
 
 .page-dot-active {
-  width: 14px;
-  height: 5px;
-  border-radius: 3px;
+  width: 7px;
+  height: 2.5px;
+  border-radius: 1.5px;
   background: linear-gradient(90deg, #fff 0%, rgba(255, 255, 255, 0.9) 100%);
   box-shadow: 
     0 0 12px rgba(255, 255, 255, 0.8),
@@ -2596,15 +2658,15 @@ html {
 /* 移动端页面指示器样式优化 */
 @media (max-width: 768px) {
   .page-indicator {
-    bottom: 18px;
-    padding: 6px 12px;
-    gap: 8px;
-    border-radius: 14px;
+    padding: 4px 5px;
+    margin-top: 8px;
+    gap: 4px;
+    border-radius: 7px;
   }
 
   .page-dot {
-    width: 6px;
-    height: 6px;
+    width: 3px;
+    height: 3px;
   }
 
   .page-dot:hover {
