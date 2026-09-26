@@ -43,14 +43,52 @@ async function importIcons(): Promise<string | null> {
     return null
 
   try {
+    // 获取当前用户的所有页面，建立pageId映射
+    const currentPageResponse = await getPageList<Common.ListResponse<Panel.ItemPage[]>>()
+    const pageIdMap = new Map<number, number>() // 旧pageId -> 新pageId
+    
+    if (currentPageResponse.code === 0 && currentPageResponse.data?.list) {
+      // 按sort排序，确保顺序一致
+      const sortedPages = currentPageResponse.data.list.sort((a, b) => (a.sort || 9999) - (b.sort || 9999))
+      
+      // 收集导出文件中的所有pageId
+      const exportedPageIds = new Set<number>()
+      groups.forEach(group => {
+        if (group.pageId) {
+          exportedPageIds.add(group.pageId)
+        }
+      })
+      
+      // 为每个导出的pageId找到对应的页面
+      // 策略：如果pageId相同且title相同，则映射；否则按顺序映射
+      const exportedPageIdsArray = Array.from(exportedPageIds).sort((a, b) => a - b)
+      
+      exportedPageIdsArray.forEach((oldPageId, index) => {
+        if (index < sortedPages.length && sortedPages[index].id !== undefined) {
+          // 按顺序映射到现有页面
+          pageIdMap.set(oldPageId, sortedPages[index].id)
+        }
+        // 如果现有页面不够，后面会创建新页面
+      })
+    }
+
     for (let i = 0; i < groups.length; i++) {
       const element = groups[i]
+
+      // 处理pageId映射
+      let targetPageId: number | undefined = undefined
+      if (element.pageId && pageIdMap.has(element.pageId)) {
+        const mappedId = pageIdMap.get(element.pageId)
+        if (mappedId !== undefined) {
+          targetPageId = mappedId
+        }
+      }
 
       // 创建组得到组id，包含pageId字段
       const createGroupResponse = await addGroup<Panel.ItemIconGroup>({
         title: element.title,
         sort: element.sort,
-        pageId: element.pageId || undefined,  // 设置pageId
+        pageId: targetPageId,  // 使用映射后的pageId
       })
 
       if (createGroupResponse.code === 0) {
