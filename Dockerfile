@@ -38,9 +38,12 @@ WORKDIR /build
 COPY ./service .
 
 # 【优化 2】在 Alpine 中安装原生的 CGO 编译依赖 (gcc, musl-dev)
-# 使用阿里云镜像源加速apk包下载
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
-    && apk add --no-cache bash gcc musl-dev git
+# 使用阿里云镜像源加速apk包下载,添加重试机制
+RUN for i in $(seq 1 3); do \
+      sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+      apk add --no-cache bash gcc musl-dev git && break || \
+      if [ $i -lt 3 ]; then echo "Retry $i/3..."; sleep 2; fi; \
+    done
 
 RUN go env -w GO111MODULE=on \
     && go env -w GOPROXY=https://goproxy.cn,direct
@@ -64,9 +67,12 @@ COPY --from=server_image /build/sun-panel /app/sun-panel
 
 EXPOSE 3002
 
-# 使用阿里云镜像源加速apk包下载
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
-    && apk add --no-cache bash ca-certificates su-exec tzdata \
+# 使用阿里云镜像源加速apk包下载,添加重试机制
+RUN for i in $(seq 1 3); do \
+      sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+      apk add --no-cache bash ca-certificates su-exec tzdata && break || \
+      if [ $i -lt 3 ]; then echo "Retry $i/3..."; sleep 2; fi; \
+    done \
     && chmod +x ./sun-panel \
     && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone \
