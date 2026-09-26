@@ -2014,21 +2014,23 @@ function getNetworkModeButtonIcon() {
       </div>
     </div>
 
-    <!-- 页面指示器 - 放在容器外部最底部 -->
-    <div 
-      v-if="pages.length > 1" 
-      class="page-indicator"
-    >
-      <button 
-        v-for="(page, index) in pages" 
-        :key="page.pageInfo.id"
-        class="page-dot"
-        :class="{ 'page-dot-active': currentPageIndex === index }"
-        @click="switchToPage(index)"
+    <!-- 页面指示器 - 使用Teleport传送到body,避免受父容器影响 -->
+    <Teleport to="body">
+      <div 
+        v-if="pages.length > 1" 
+        class="page-indicator"
       >
-        <span class="page-tooltip">{{ page.pageInfo.title }}</span>
-      </button>
-    </div>
+        <button 
+          v-for="(page, index) in pages" 
+          :key="page.pageInfo.id"
+          class="page-dot"
+          :class="{ 'page-dot-active': currentPageIndex === index }"
+          @click="switchToPage(index)"
+        >
+          <span class="page-tooltip">{{ page.pageInfo.title }}</span>
+        </button>
+      </div>
+    </Teleport>
 
     <!-- 左侧分组导航条 -->
     <Transition name="fade">
