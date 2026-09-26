@@ -64,5 +64,6 @@ database/database.db
 *.db
 uploads/
 runtime/
+data/
 *.exe
 *.code-workspace
