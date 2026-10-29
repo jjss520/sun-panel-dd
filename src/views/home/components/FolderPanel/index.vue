@@ -34,7 +34,6 @@ const emit = defineEmits<{
   (e: 'select', item: Panel.ItemInfo): void
   (e: 'edit', item: Panel.ItemInfo): void
   (e: 'add-item', parentId: number): void
-  (e: 'add-folder', parentId: number): void
   (e: 'delete', item: Panel.ItemInfo): void
   (e: 'move', item: Panel.ItemInfo, parentId: number): void
 }>()
@@ -290,12 +289,6 @@ defineExpose({ back })
                 @click="emit('add-item', current?.id as number)"
               >
                 <SvgIconOnline icon="typcn:plus" style="font-size: 15px;" />
-              </button>
-              <button
-                v-if="editable" class="fp-tool" :title="t('iconItem.newFolder')"
-                @click="emit('add-folder', current?.id as number)"
-              >
-                <SvgIconOnline icon="mdi:folder-plus-outline" style="font-size: 15px;" />
               </button>
               <button class="fp-tool" :title="t('common.close')" @click="close">
                 <SvgIconOnline icon="mdi:close" style="font-size: 15px;" />

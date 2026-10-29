@@ -70,6 +70,13 @@ func (a *ItemIcon) Edit(c *gin.Context) {
 		global.Db.Model(&models.ItemIcon{}).
 			Select(updateField).
 			Where("id=?", req.ID).Updates(&req)
+
+		// 文件夹更换分组时，同步把子项也移到新分组，否则子项会遗留在旧分组导致"消失"
+		if req.IsFolder == 1 {
+			global.Db.Model(&models.ItemIcon{}).
+				Where("parent_id=?", req.ID).
+				Update("item_icon_group_id", req.ItemIconGroupId)
+		}
 	} else {
 		req.Sort = 9999
 		// 创建

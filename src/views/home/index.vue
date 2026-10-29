@@ -49,6 +49,7 @@ const dropdownShow = ref(false)
 const currentRightSelectItem = ref<Panel.ItemInfo | null>(null)
 const currentAddItenIconGroupId = ref<number | undefined>()
 const currentAddParentId = ref<number>(0) // 新增图标所属的文件夹ID，0=分组根目录
+const editSourceGroupId = ref<number | undefined>() // 编辑前的来源分组，用于换组后同时刷新旧分组
 const notepadVisible = ref(false)
 const notepadInstance = ref(null) // 便签实例
 const bookmarkVisible = ref(false) // 书签管理器显示状态
@@ -1806,6 +1807,14 @@ async function handleEditSuccess(item: Panel.ItemInfo) {
     ss.remove(`${ITEM_ICON_LIST_CACHE_KEY_PREFIX}${item.itemIconGroupId}`)
     // 只刷新该分组，保持文件夹弹层内容同步、避免整页闪烁
     await refreshGroupIcons(item.itemIconGroupId)
+
+    // 图标/文件夹换过分组时，旧分组也要清缓存并刷新，否则旧分组仍显示它
+    const sourceGroupId = editSourceGroupId.value
+    if (sourceGroupId && Number(sourceGroupId) !== Number(item.itemIconGroupId)) {
+      ss.remove(`${ITEM_ICON_LIST_CACHE_KEY_PREFIX}${sourceGroupId}`)
+      await refreshGroupIcons(sourceGroupId)
+    }
+    editSourceGroupId.value = undefined
     return
   }
   // 强制刷新页面数据(多页模式)
@@ -2077,6 +2086,7 @@ function handleEditItem(item: Panel.ItemInfo) {
   editItemInfoShow.value = true
   currentAddItenIconGroupId.value = undefined
   currentAddParentId.value = 0
+  editSourceGroupId.value = item.itemIconGroupId
 }
 
 function handleAddItem(itemIconGroupId?: number, parentId = 0) {
@@ -2604,7 +2614,6 @@ function getNetworkModeButtonIcon() {
       @select="handleFolderItemSelect"
       @edit="handleEditItem"
       @add-item="(parentId) => handleAddItem(currentFolder?.itemIconGroupId, parentId)"
-      @add-folder="(parentId) => handleAddFolder(undefined, parentId)"
       @delete="confirmDeleteItem"
       @move="handleMoveItem"
     />
