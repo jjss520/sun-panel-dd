@@ -35,6 +35,14 @@ export function deletes<T>(ids: number[]) {
   })
 }
 
+// 移动图标到文件夹，parentId 为 0 表示移回分组根目录
+export function move<T>(id: number, parentId: number) {
+  return post<T>({
+    url: '/panel/itemIcon/move',
+    data: { id, parentId },
+  })
+}
+
 export function saveSort<T>(data: Panel.ItemIconSortRequest) {
   return post<T>({
     url: '/panel/itemIcon/saveSort',

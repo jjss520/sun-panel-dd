@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { VueDraggable } from 'vue-draggable-plus'
-import { NBackTop, NButton, NButtonGroup, NDropdown, NModal, NSkeleton, NSpin, useDialog, useMessage } from 'naive-ui'
+import { NBackTop, NButton, NButtonGroup, NDropdown, NInput, NModal, NSkeleton, NSpin, useDialog, useMessage } from 'naive-ui'
 import { nextTick, onMounted, onActivated, onUnmounted, ref, h, watch } from 'vue'
 import { AppIcon, AppStarter, EditItem, NotePad } from './components'
+import FolderPanel from './components/FolderPanel/index.vue'
 import BookmarkManager from '@/views/bookmark-manager/index.vue'
 import FileDownloader from '@/components/apps/FileDownloader/index.vue'
 import { Clock, SystemMonitor } from '@/components/deskModule'
 import SearchBoxWithSuggestions from '@/components/deskModule/SearchBoxWithSuggestions/index.vue'
 import { SvgIcon, SvgIconOnline } from '@/components/common'
-import { deletes, getListByGroupId, saveSort } from '@/api/panel/itemIcon'
+import { deletes, edit as editItemIcon, getListByGroupId, move as moveItemIcon, saveSort } from '@/api/panel/itemIcon'
 import { acknowledgeReminder, getNotepadList } from '@/api/panel/notepad'  // 确认提醒 API + 获取便签列表
 
 import { setTitle, updateLocalUserInfo, openUrlWithoutReferer } from '@/utils/cmn'
@@ -47,6 +48,7 @@ const dropdownMenuY = ref(0)
 const dropdownShow = ref(false)
 const currentRightSelectItem = ref<Panel.ItemInfo | null>(null)
 const currentAddItenIconGroupId = ref<number | undefined>()
+const currentAddParentId = ref<number>(0) // 新增图标所属的文件夹ID，0=分组根目录
 const notepadVisible = ref(false)
 const notepadInstance = ref(null) // 便签实例
 const bookmarkVisible = ref(false) // 书签管理器显示状态
@@ -57,6 +59,18 @@ const showIcons = ref(true) // 控制图标显示/隐藏
 const showGroupNav = ref(false) // 控制分组导航显示/隐藏（默认隐藏）
 const currentGroupIndex = ref(0) // 当前滚动到的分组索引
 const groupNavTimer = ref<number | null>(null) // 自动隐藏定时器
+
+// ===== 文件夹相关状态 =====
+const folderPanelVisible = ref(false) // 文件夹弹层
+const currentFolder = ref<Panel.ItemInfo | null>(null) // 当前打开的文件夹
+const newFolderShow = ref(false) // 新建文件夹弹窗
+const newFolderName = ref('')
+const newFolderParentId = ref(0) // 0 表示建在分组根目录
+const newFolderGroupId = ref<number | undefined>()
+const folderDeleteShow = ref(false) // 删除文件夹弹窗
+const folderDeleteTarget = ref<Panel.ItemInfo | null>(null)
+const draggingItem = ref<Panel.ItemInfo | null>(null) // 拖拽中的图标
+const dragOverFolderId = ref<number | null>(null) // 拖拽悬停的文件夹
 
 // 提醒通知列表
 interface RemindNotification {
@@ -954,12 +968,23 @@ async function handleItemClick(itemGroupIndex: number, item: Panel.ItemInfo) {
     isLongPressing = false
     return
   }
-  
+
+  // 文件夹：打开弹层（编辑模式下也优先打开，重命名等操作走右键菜单）
+  if (item.isFolder === 1) {
+    openFolderPanel(item)
+    return
+  }
+
   if (items.value[itemGroupIndex] && items.value[itemGroupIndex].sortStatus) {
     handleEditItem(item)
     return
   }
 
+  await openItemByNetworkMode(item)
+}
+
+// 按当前网络模式打开图标链接（首页与文件夹弹层共用）
+async function openItemByNetworkMode(item: Panel.ItemInfo) {
   // 辅助函数：标准化URL（保持原样，不自动添加协议）
   const normalizeUrl = (url: string | undefined | null) => {
     if (!url) return ''
@@ -1036,6 +1061,345 @@ async function handleItemClick(itemGroupIndex: number, item: Panel.ItemInfo) {
 
 function handWindowIframeIdLoad(payload: Event) {
   windowIframeIsLoad.value = false
+}
+
+// ================= 文件夹：数据结构与操作 =================
+
+// 是否允许拖拽图标到文件夹上（登录 + 编辑模式）
+const canDragIntoFolder = computed(() => authStore.visitMode === VisitMode.VISIT_MODE_LOGIN
+  && panelState.networkMode === PanelStateNetworkModeEnum.edit)
+
+// 文件夹弹层内是否可编辑
+const canEditFolder = computed(() => canDragIntoFolder.value)
+
+// 文件夹弹层里「移动到…」的可选目标：同分组下的其他文件夹
+const folderMoveTargets = computed(() => {
+  const folder = currentFolder.value
+  if (!folder)
+    return []
+
+  const group = findGroupById(folder.itemIconGroupId)
+
+  const result: { label: string, value: number }[] = []
+  const collect = (nodes: Panel.ItemInfo[], depth: number) => {
+    nodes.forEach((node) => {
+      if (node.isFolder !== 1 || node.id === folder.id)
+        return
+
+      result.push({ label: `${'　'.repeat(depth)}${node.title}`, value: node.id as number })
+      if (node.children?.length)
+        collect(node.children, depth + 1)
+    })
+  }
+  collect(group?.items || [], 0)
+  return result
+})
+
+// 把后端返回的平铺列表组装成文件夹树（父级不存在时按根节点处理，避免图标“消失”）
+function buildFolderTree(list: Panel.ItemInfo[]): Panel.ItemInfo[] {
+  // isFolder / parentId 统一转成数字，避免字符串 "1" 导致文件夹识别失效
+  const nodes: Panel.ItemInfo[] = (list || []).map(item => ({
+    ...item,
+    isFolder: Number(item.isFolder || 0),
+    parentId: Number(item.parentId || 0),
+    children: [],
+  }))
+  const map = new Map<number, Panel.ItemInfo>()
+  nodes.forEach(node => map.set(Number(node.id), node))
+
+  const roots: Panel.ItemInfo[] = []
+  nodes.forEach((node) => {
+    const parentId = Number(node.parentId || 0)
+    const parent = parentId ? map.get(parentId) : undefined
+
+    if (parent && parent.isFolder === 1 && parent.id !== node.id)
+      parent.children!.push(node)
+    else
+      roots.push(node)
+  })
+
+  const sortNodes = (arr: Panel.ItemInfo[]) => {
+    arr.sort((a, b) => (a.sort ?? 9999) - (b.sort ?? 9999))
+    arr.forEach((node) => {
+      if (node.children?.length)
+        sortNodes(node.children)
+    })
+  }
+  sortNodes(roots)
+
+  return roots
+}
+
+// 首页存在两条数据链：pages（多页渲染用）和 items（旧逻辑 / 缓存），
+// 文件夹相关操作必须两边都查，否则会出现“右键菜单里看不到文件夹”这类问题
+function collectAllGroups(): ItemGroup[] {
+  const map = new Map<number, ItemGroup>()
+  const push = (group?: ItemGroup | null) => {
+    if (!group || !group.id)
+      return
+
+    const key = Number(group.id)
+    const exist = map.get(key)
+    // 优先保留已经加载了图标的那一份
+    if (!exist || ((!exist.items || exist.items.length === 0) && group.items?.length))
+      map.set(key, group)
+  }
+
+  pages.value.forEach(page => (page.groups || []).forEach(push));
+  (items.value || []).forEach(push)
+  return [...map.values()]
+}
+
+// 按分组 id 查找分组（两条数据链都查）
+function findGroupById(id?: number | null): ItemGroup | undefined {
+  if (!id)
+    return undefined
+
+  return collectAllGroups().find(group => Number(group.id) === Number(id))
+}
+
+// 在所有页面中按 id 查找图标（含文件夹子项）
+function findItemInPages(id: number): Panel.ItemInfo | null {
+  let hit: Panel.ItemInfo | null = null
+  const walk = (nodes: Panel.ItemInfo[]) => {
+    for (const node of nodes) {
+      if (hit)
+        return
+      if (Number(node.id) === Number(id)) {
+        hit = node
+        return
+      }
+      if (node.children?.length)
+        walk(node.children)
+    }
+  }
+  collectAllGroups().forEach(group => walk(group.items || []))
+  return hit
+}
+
+// 刷新单个分组的图标（新建 / 移动 / 删除后调用，保持弹层内容同步）
+async function refreshGroupIcons(groupId?: number) {
+  if (!groupId)
+    return
+
+  const cacheKey = `${ITEM_ICON_LIST_CACHE_KEY_PREFIX}${groupId}`
+  ss.remove(cacheKey)
+
+  try {
+    const res = await getListByGroupId<Common.ListResponse<Panel.ItemInfo[]>>(groupId)
+    if (res.code !== 0)
+      return
+
+    const tree = buildFolderTree(res.data.list)
+    ss.set(cacheKey, res.data.list)
+
+    // 两条数据链上的同名分组都要更新，否则界面不会刷新
+    const applyTo = (groups?: ItemGroup[]) => {
+      (groups || []).forEach((group) => {
+        if (Number(group.id) === Number(groupId))
+          group.items = tree
+      })
+    }
+    pages.value.forEach(page => applyTo(page.groups))
+    applyTo(items.value)
+
+    filterItemsByNetworkMode()
+
+    if (currentFolder.value) {
+      const found = findItemInPages(currentFolder.value.id as number)
+      currentFolder.value = found
+      if (!found)
+        folderPanelVisible.value = false
+    }
+  }
+  catch (error) {
+    console.error('刷新分组图标失败:', error)
+  }
+}
+
+// 打开文件夹弹层
+function openFolderPanel(folder: Panel.ItemInfo) {
+  currentFolder.value = folder
+  folderPanelVisible.value = true
+}
+
+// 新建文件夹
+function handleAddFolder(groupId?: number, parentId = 0) {
+  newFolderGroupId.value = groupId ?? currentFolder.value?.itemIconGroupId
+  newFolderParentId.value = parentId
+  newFolderName.value = ''
+  newFolderShow.value = true
+}
+
+async function submitNewFolder() {
+  if (!newFolderGroupId.value) {
+    ms.error(t('iconItem.getGroupFail'))
+    return
+  }
+
+  const req: Panel.ItemInfo = {
+    icon: { itemType: 3, text: 'mdi:folder', backgroundColor: '#2a2a2a6b' },
+    title: newFolderName.value.trim() || t('iconItem.newFolder'),
+    url: '',
+    lanUrl: '',
+    description: '',
+    openMethod: 0,
+    itemIconGroupId: newFolderGroupId.value,
+    parentId: newFolderParentId.value,
+    isFolder: 1,
+  }
+
+  const { code, msg } = await editItemIcon<Panel.ItemInfo>(req)
+  if (code === 0) {
+    newFolderShow.value = false
+    await refreshGroupIcons(newFolderGroupId.value)
+    ms.success(t('common.addSuccess'))
+  }
+  else {
+    ms.error(`${t('common.saveFail')}:${msg}`)
+  }
+}
+
+// 移动图标到文件夹（parentId = 0 表示移回分组根目录）
+async function handleMoveItem(item: Panel.ItemInfo, parentId: number) {
+  const { code, msg } = await moveItemIcon<{ id: number, parentId: number }>(item.id as number, parentId)
+  if (code !== 0) {
+    ms.error(`${t('common.failed')}:${msg}`)
+    return
+  }
+
+  await refreshGroupIcons(item.itemIconGroupId)
+
+  if (parentId === 0) {
+    const group = findGroupById(item.itemIconGroupId)
+    ms.success(t('iconItem.moveOutSuccess', { name: group?.title || '' }))
+  }
+  else {
+    const target = findItemInPages(parentId)
+    ms.success(t('iconItem.moveSuccess', { name: target?.title || '' }))
+  }
+}
+
+// 拖拽：图标开始拖动
+function handleIconDragStart(e: DragEvent, item: Panel.ItemInfo) {
+  if (!canDragIntoFolder.value)
+    return
+
+  draggingItem.value = item
+  e.dataTransfer?.setData('text/plain', String(item.id))
+  if (e.dataTransfer)
+    e.dataTransfer.effectAllowed = 'move'
+}
+
+function handleIconDragOver(e: DragEvent, item: Panel.ItemInfo) {
+  const source = draggingItem.value
+  if (!source || item.isFolder !== 1 || item.id === source.id)
+    return
+
+  e.preventDefault()
+  if (e.dataTransfer)
+    e.dataTransfer.dropEffect = 'move'
+  dragOverFolderId.value = item.id as number
+}
+
+function handleIconDragLeave(item: Panel.ItemInfo) {
+  if (dragOverFolderId.value === item.id)
+    dragOverFolderId.value = null
+}
+
+async function handleIconDrop(e: DragEvent, item: Panel.ItemInfo) {
+  const source = draggingItem.value
+  dragOverFolderId.value = null
+  draggingItem.value = null
+
+  if (!source || item.isFolder !== 1 || item.id === source.id)
+    return
+
+  e.preventDefault()
+  await handleMoveItem(source, item.id as number)
+}
+
+function handleIconDragEnd() {
+  draggingItem.value = null
+  dragOverFolderId.value = null
+}
+
+// 删除图标 / 文件夹
+function confirmDeleteItem(item: Panel.ItemInfo) {
+  if (item.isFolder === 1) {
+    folderDeleteTarget.value = item
+    folderDeleteShow.value = true
+    return
+  }
+
+  dialog.warning({
+    title: t('common.warning'),
+    content: t('common.deleteConfirmByName', { name: item.title }),
+    positiveText: t('common.confirm'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: async () => {
+      const { code, msg } = await deletes([item.id as number])
+      if (code === 0) {
+        ms.success(t('common.deleteSuccess'))
+        await refreshGroupIcons(item.itemIconGroupId)
+      }
+      else {
+        ms.error(`${t('common.deleteFail')}:${msg}`)
+      }
+    },
+  })
+}
+
+// 删除文件夹：仅删文件夹（子项移回上级）
+async function deleteFolderKeepItems() {
+  const folder = folderDeleteTarget.value
+  if (!folder)
+    return
+
+  const children = folder.children || []
+  const targetParentId = folder.parentId || 0
+
+  for (const child of children)
+    await moveItemIcon(child.id as number, targetParentId)
+
+  const { code, msg } = await deletes([folder.id as number])
+  folderDeleteShow.value = false
+
+  if (code === 0) {
+    ms.success(t('common.deleteSuccess'))
+    folderPanelVisible.value = false
+    await refreshGroupIcons(folder.itemIconGroupId)
+  }
+  else {
+    ms.error(`${t('common.deleteFail')}:${msg}`)
+  }
+}
+
+// 删除文件夹：连同子项一起删除
+async function deleteFolderWithItems() {
+  const folder = folderDeleteTarget.value
+  if (!folder)
+    return
+
+  const { code, msg } = await deletes([folder.id as number])
+  folderDeleteShow.value = false
+
+  if (code === 0) {
+    ms.success(t('common.deleteSuccess'))
+    folderPanelVisible.value = false
+    await refreshGroupIcons(folder.itemIconGroupId)
+  }
+  else {
+    ms.error(`${t('common.deleteFail')}:${msg}`)
+  }
+}
+
+// 弹层内点击子图标
+async function handleFolderItemSelect(item: Panel.ItemInfo) {
+  await openItemByNetworkMode(item)
+  // 新标签页打开时保持面板，方便连续打开多个
+  if (item.openMethod !== 2)
+    folderPanelVisible.value = false
 }
 
 // 根据网络模式过滤项目
@@ -1172,13 +1536,13 @@ async function updateGroupIcons(page: PageData, groupIndex: number, groupId: num
     const cachedData = ss.get(cacheKey)
     
     if (cachedData) {
-      page.groups[groupIndex].items = cachedData
+      page.groups[groupIndex].items = buildFolderTree(cachedData)
       return
     }
     
     const res = await getListByGroupId<Common.ListResponse<Panel.ItemInfo[]>>(groupId)
     if (res.code === 0) {
-      page.groups[groupIndex].items = res.data.list
+      page.groups[groupIndex].items = buildFolderTree(res.data.list)
       ss.set(cacheKey, res.data.list)
     }
   } catch (error) {
@@ -1251,7 +1615,7 @@ async function updateItemIconGroupByNet(itemIconGroupIndex: number, itemIconGrou
     // 2. 首先尝试从缓存读取数据
     const cachedData = ss.get(cacheKey)
     if (cachedData) {
-      items.value[itemIconGroupIndex].items = cachedData
+      items.value[itemIconGroupIndex].items = buildFolderTree(cachedData)
 
       // 当所有组的数据都加载完成后，应用网络模式过滤
       const allGroupsLoaded = items.value.every(group => group.items !== undefined)
@@ -1263,7 +1627,7 @@ async function updateItemIconGroupByNet(itemIconGroupIndex: number, itemIconGrou
     const res = await getListByGroupId<Common.ListResponse<Panel.ItemInfo[]>>(itemIconGroupId)
 
     if (res.code === 0) {
-      items.value[itemIconGroupIndex].items = res.data.list
+      items.value[itemIconGroupIndex].items = buildFolderTree(res.data.list)
       // 4. 将数据永久保存到缓存中
       ss.set(cacheKey, res.data.list)
 
@@ -1278,7 +1642,7 @@ async function updateItemIconGroupByNet(itemIconGroupIndex: number, itemIconGrou
     const cacheKey = `${ITEM_ICON_LIST_CACHE_KEY_PREFIX}${itemIconGroupId}`
     const cachedData = ss.get(cacheKey)
     if (cachedData) {
-      items.value[itemIconGroupIndex].items = cachedData
+      items.value[itemIconGroupIndex].items = buildFolderTree(cachedData)
 
       // 当所有组的数据都加载完成后，应用网络模式过滤
       const allGroupsLoaded = items.value.every(group => group.items !== undefined)
@@ -1336,38 +1700,36 @@ function handleRightMenuSelect(key: string | number) {
       // 这里有个奇怪的问题，如果不使用{...}的方式 父组件的值会同步修改 标记一下
       handleEditItem({ ...currentRightSelectItem.value } as Panel.ItemInfo)
       break
+    case 'openFolder':
+      if (currentRightSelectItem.value)
+        openFolderPanel(currentRightSelectItem.value)
+      break
+    case 'moveToRoot':
+      if (currentRightSelectItem.value)
+        handleMoveItem(currentRightSelectItem.value, 0)
+      break
+    case 'createFolder':
+      if (currentRightSelectItem.value)
+        handleAddFolder(currentRightSelectItem.value.itemIconGroupId)
+      break
     case 'delete':
-      dialog.warning({
-        title: t('common.warning'),
-        content: t('common.deleteConfirmByName', { name: currentRightSelectItem.value?.title }),
-        positiveText: t('common.confirm'),
-        negativeText: t('common.cancel'),
-        onPositiveClick: () => {
-          if (currentRightSelectItem.value) {
-            const itemIconGroupId = currentRightSelectItem.value.itemIconGroupId
-            deletes([currentRightSelectItem.value.id as number]).then(({ code, msg }) => {
-              if (code === 0) {
-                ms.success(t('common.deleteSuccess'))
-                // 清除该分组的图标缓存
-                ss.remove(`${ITEM_ICON_LIST_CACHE_KEY_PREFIX}${itemIconGroupId}`)
-                getList()
-              }
-              else {
-                ms.error(`${t('common.deleteFail')}:${msg}`)
-              }
-            })
-          }
-        },
-      })
-
+      if (currentRightSelectItem.value)
+        confirmDeleteItem(currentRightSelectItem.value)
       break
     default:
+      // 移动到指定文件夹：moveTo:文件夹ID
+      if (typeof key === 'string' && key.startsWith('moveTo:') && currentRightSelectItem.value) {
+        const targetId = Number(key.split(':')[1])
+        handleMoveItem(currentRightSelectItem.value, targetId)
+      }
       break
   }
 }
 
 function handleContextMenu(e: MouseEvent, itemGroupIndex: number, item: Panel.ItemInfo) {
-  if (items.value[itemGroupIndex] && items.value[itemGroupIndex].sortStatus)
+  // 排序状态下不弹右键菜单（按图标所属分组判断，避免 items / pages 两套数据索引错位）
+  const group = findGroupById(item.itemIconGroupId)
+  if (group?.sortStatus)
     return
 
   e.preventDefault()
@@ -1442,6 +1804,9 @@ async function handleEditSuccess(item: Panel.ItemInfo) {
   // 清除该分组的图标缓存
   if (item.itemIconGroupId) {
     ss.remove(`${ITEM_ICON_LIST_CACHE_KEY_PREFIX}${item.itemIconGroupId}`)
+    // 只刷新该分组，保持文件夹弹层内容同步、避免整页闪烁
+    await refreshGroupIcons(item.itemIconGroupId)
+    return
   }
   // 强制刷新页面数据(多页模式)
   await loadPages(true)
@@ -1484,32 +1849,88 @@ function handleSaveSort(itemGroup: ItemGroup) {
   }
 }
 
-function getDropdownMenuOptions() {
-  const dropdownMenuOptions = [
-    {
-      label: t('iconItem.newWindowOpen'),
-      key: 'newWindows',
-    },
+// 右键菜单里的「移动到…」子菜单：同分组下的其他文件夹
+function getFolderMoveMenuOptions() {
+  const item = currentRightSelectItem.value
+  if (!item)
+    return []
 
-  ]
+  const group = findGroupById(item.itemIconGroupId)
 
-  // 当图标有公网地址时，显示打开公网地址选项
-  if (currentRightSelectItem.value?.url) {
-    dropdownMenuOptions.push({
-      label: t('panelHome.openWanUrl'),
-      key: 'openWanUrl',
+  const options: { label: string, key: string, disabled?: boolean }[] = []
+
+  // 已经在分组根目录时，“移回根目录”没有意义，不显示
+  if (item.parentId)
+    options.push({ label: t('iconItem.moveToGroupRoot'), key: 'moveToRoot' })
+
+  const folders: { label: string, key: string }[] = []
+  const walk = (nodes: Panel.ItemInfo[], depth: number) => {
+    nodes.forEach((node) => {
+      if (node.isFolder !== 1 || node.id === item.id)
+        return
+
+      folders.push({ label: `${'　'.repeat(depth)}${node.title}`, key: `moveTo:${node.id}` })
+      if (node.children?.length)
+        walk(node.children, depth + 1)
     })
   }
+  walk(group?.items || [], 0)
 
-  // 当图标有内网地址时，显示打开内网地址选项
-  if (currentRightSelectItem.value?.lanUrl) {
+  if (!folders.length) {
+    options.push({ label: t('iconItem.noFolderYet'), key: 'noFolder', disabled: true })
+    options.push({ label: t('iconItem.newFolder'), key: 'createFolder' })
+  }
+
+  return options.concat(folders)
+}
+
+function getDropdownMenuOptions() {
+  const item = currentRightSelectItem.value
+  const dropdownMenuOptions: any[] = []
+
+  if (item?.isFolder === 1) {
+    // 文件夹只需要「打开」
     dropdownMenuOptions.push({
-      label: t('panelHome.openLanUrl'),
-      key: 'openLanUrl',
+      label: t('iconItem.open'),
+      key: 'openFolder',
     })
+  }
+  else {
+    dropdownMenuOptions.push({
+      label: t('iconItem.newWindowOpen'),
+      key: 'newWindows',
+    })
+
+    // 当图标有公网地址时，显示打开公网地址选项
+    if (item?.url) {
+      dropdownMenuOptions.push({
+        label: t('panelHome.openWanUrl'),
+        key: 'openWanUrl',
+      })
+    }
+
+    // 当图标有内网地址时，显示打开内网地址选项
+    if (item?.lanUrl) {
+      dropdownMenuOptions.push({
+        label: t('panelHome.openLanUrl'),
+        key: 'openLanUrl',
+      })
+    }
   }
 
   if (authStore.visitMode === VisitMode.VISIT_MODE_LOGIN) {
+    // 普通图标可以移动到文件夹
+    if (item && item.isFolder !== 1) {
+      const moveOptions = getFolderMoveMenuOptions()
+      if (moveOptions.length) {
+        dropdownMenuOptions.push({
+          label: t('iconItem.moveTo'),
+          key: 'moveTo',
+          children: moveOptions,
+        })
+      }
+    }
+
     dropdownMenuOptions.push({
       label: t('common.edit'),
       key: 'edit',
@@ -1655,11 +2076,13 @@ function handleEditItem(item: Panel.ItemInfo) {
   editItemInfoData.value = item
   editItemInfoShow.value = true
   currentAddItenIconGroupId.value = undefined
+  currentAddParentId.value = 0
 }
 
-function handleAddItem(itemIconGroupId?: number) {
+function handleAddItem(itemIconGroupId?: number, parentId = 0) {
   editItemInfoData.value = null
   editItemInfoShow.value = true
+  currentAddParentId.value = parentId
   if (itemIconGroupId)
     currentAddItenIconGroupId.value = itemIconGroupId
 }
@@ -1907,6 +2330,9 @@ function getNetworkModeButtonIcon() {
                     <span class="mr-2 cursor-pointer" :title="t('common.add')" @click="handleAddItem(itemGroup.id)">
                       <SvgIcon class="text-white font-xl" icon="typcn:plus" />
                     </span>
+                    <span class="mr-2 cursor-pointer" :title="t('iconItem.newFolder')" @click="handleAddFolder(itemGroup.id)">
+                      <SvgIconOnline class="text-white font-xl" icon="mdi:folder-plus-outline" />
+                    </span>
                     <span class="mr-2 cursor-pointer " :title="t('common.sort')" @click="handleSetSortStatus(itemGroup, !itemGroup.sortStatus)">
                       <SvgIcon class="text-white font-xl" icon="ri:drag-drop-line" />
                     </span>
@@ -1924,10 +2350,18 @@ function getNetworkModeButtonIcon() {
                       @end="handleSaveSort(itemGroup)"
                     >
                       <div v-for="item, index in itemGroup.items" :key="index" :title="item.description" 
+                        class="icon-drag-wrap"
+                        :class="{ 'folder-drop-target': dragOverFolderId === item.id }"
+                        :draggable="canDragIntoFolder && !itemGroup.sortStatus"
                         @contextmenu="(e) => !isMobile && handleContextMenu(e, itemGroupIndex, item)"
                         @touchstart="(e) => handleTouchStart(e, itemGroupIndex, item)"
                         @touchend="handleTouchEnd()"
                         @touchmove="handleTouchEnd()"
+                        @dragstart="handleIconDragStart($event, item)"
+                        @dragend="handleIconDragEnd"
+                        @dragover="handleIconDragOver($event, item)"
+                        @dragleave="handleIconDragLeave(item)"
+                        @drop="handleIconDrop($event, item)"
                       >
                         <AppIcon
                           :class="itemGroup.sortStatus ? 'cursor-move' : 'cursor-pointer'"
@@ -1935,7 +2369,7 @@ function getNetworkModeButtonIcon() {
                           :icon-text-color="panelState.panelConfig.iconTextColor"
                           :icon-text-info-hide-description="panelState.panelConfig.iconTextInfoHideDescription || false"
                           :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
-                          :style="0"
+                          :panel-style="0"
                           @click="handleItemClick(itemGroupIndex, item)"
                         />
                       </div>
@@ -1947,7 +2381,7 @@ function getNetworkModeButtonIcon() {
                           :icon-text-color="panelState.panelConfig.iconTextColor"
                           :icon-text-info-hide-description="panelState.panelConfig.iconTextInfoHideDescription || false"
                           :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
-                          :style="0"
+                          :panel-style="0"
                           @click="handleAddItem(itemGroup.id)"
                         />
                       </div>
@@ -1967,10 +2401,18 @@ function getNetworkModeButtonIcon() {
                       @end="handleSaveSort(itemGroup)"
                     >
                       <div v-for="item, index in itemGroup.items" :key="index" :title="item.description" 
+                        class="icon-drag-wrap"
+                        :class="{ 'folder-drop-target': dragOverFolderId === item.id }"
+                        :draggable="canDragIntoFolder && !itemGroup.sortStatus"
                         @contextmenu="(e) => !isMobile && handleContextMenu(e, itemGroupIndex, item)"
                         @touchstart="(e) => handleTouchStart(e, itemGroupIndex, item)"
                         @touchend="handleTouchEnd()"
                         @touchmove="handleTouchEnd()"
+                        @dragstart="handleIconDragStart($event, item)"
+                        @dragend="handleIconDragEnd"
+                        @dragover="handleIconDragOver($event, item)"
+                        @dragleave="handleIconDragLeave(item)"
+                        @drop="handleIconDrop($event, item)"
                       >
                         <AppIcon
                           :class="itemGroup.sortStatus ? 'cursor-move' : 'cursor-pointer'"
@@ -1978,7 +2420,7 @@ function getNetworkModeButtonIcon() {
                           :icon-text-color="panelState.panelConfig.iconTextColor"
                           :icon-text-info-hide-description="!panelState.panelConfig.iconTextInfoHideDescription"
                           :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
-                          :style="1"
+                          :panel-style="1"
                           @click="handleItemClick(itemGroupIndex, item)"
                         />
                       </div>
@@ -1990,7 +2432,7 @@ function getNetworkModeButtonIcon() {
                           :icon-text-color="panelState.panelConfig.iconTextColor"
                           :icon-text-info-hide-description="!panelState.panelConfig.iconTextInfoHideDescription"
                           :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
-                          :style="1"
+                          :panel-style="1"
                           @click="handleAddItem(itemGroup.id)"
                         />
                       </div>
@@ -2143,9 +2585,71 @@ function getNetworkModeButtonIcon() {
       v-model:visible="editItemInfoShow" 
       :item-info="editItemInfoData" 
       :item-group-id="currentAddItenIconGroupId" 
+      :parent-id="currentAddParentId"
       :page-id="pages[currentPageIndex]?.pageInfo?.id"
       @done="handleEditSuccess" 
     />
+
+    <!-- 文件夹弹层 -->
+    <FolderPanel
+      v-model:visible="folderPanelVisible"
+      :folder="currentFolder"
+      :icon-style="(panelState.panelConfig.iconStyle as PanelPanelConfigStyleEnum)"
+      :icon-text-color="panelState.panelConfig.iconTextColor"
+      :icon-text-info-hide-description="panelState.panelConfig.iconTextInfoHideDescription || false"
+      :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
+      :editable="canEditFolder"
+      :is-mobile="isMobile"
+      :move-targets="folderMoveTargets"
+      @select="handleFolderItemSelect"
+      @edit="handleEditItem"
+      @add-item="(parentId) => handleAddItem(currentFolder?.itemIconGroupId, parentId)"
+      @add-folder="(parentId) => handleAddFolder(undefined, parentId)"
+      @delete="confirmDeleteItem"
+      @move="handleMoveItem"
+    />
+
+    <!-- 新建文件夹 -->
+    <NModal v-model:show="newFolderShow" preset="card" size="small" style="width: 420px; border-radius: 1rem;" :title="t('iconItem.newFolder')">
+      <div class="text-sm opacity-60 mb-3">
+        {{ t('iconItem.folderNamePlaceholder') }}
+      </div>
+      <NInput
+        v-model:value="newFolderName"
+        :maxlength="20"
+        show-count
+        :placeholder="t('iconItem.folderNamePlaceholder')"
+        @keyup.enter="submitNewFolder"
+      />
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton @click="newFolderShow = false">
+            {{ t('common.cancel') }}
+          </NButton>
+          <NButton type="primary" @click="submitNewFolder">
+            {{ t('common.confirm') }}
+          </NButton>
+        </div>
+      </template>
+    </NModal>
+
+    <!-- 删除文件夹：两种处理方式 -->
+    <NModal v-model:show="folderDeleteShow" preset="card" size="small" style="width: 460px; border-radius: 1rem;" :title="t('iconItem.deleteFolderTitle', { name: folderDeleteTarget?.title || '' })">
+      <div class="text-sm opacity-70 mb-4">
+        {{ t('iconItem.deleteFolderTip', { count: folderDeleteTarget?.children?.length || 0 }) }}
+      </div>
+      <div class="flex flex-col gap-2">
+        <NButton block @click="deleteFolderKeepItems">
+          {{ t('iconItem.deleteFolderKeepItems', { count: folderDeleteTarget?.children?.length || 0 }) }}
+        </NButton>
+        <NButton block type="error" ghost @click="deleteFolderWithItems">
+          {{ t('iconItem.deleteFolderWithItems', { count: folderDeleteTarget?.children?.length || 0 }) }}
+        </NButton>
+        <NButton block quaternary @click="folderDeleteShow = false">
+          {{ t('common.cancel') }}
+        </NButton>
+      </div>
+    </NModal>
 
     <!-- 弹窗 -->
     <NModal
@@ -2237,6 +2741,27 @@ body,
 html {
   overflow: hidden;
   background-color: rgb(54, 54, 54);
+}
+
+/* 拖拽图标悬停在文件夹上时的高亮（.folder-plate 在子组件内，用全局样式覆盖） */
+.folder-drop-target .folder-plate {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 8px rgba(255, 255, 255, 0.18),
+    0 12px 28px rgba(255, 255, 255, 0.24) !important;
+}
+
+.folder-drop-target .folder-mini-empty {
+  border-color: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* 编辑模式下可拖拽的图标 */
+.icon-drag-wrap[draggable='true'] {
+  cursor: grab;
+}
+
+.icon-drag-wrap[draggable='true']:active {
+  cursor: grabbing;
 }
 </style>
 

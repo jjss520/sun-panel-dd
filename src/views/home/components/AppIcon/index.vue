@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { ItemIcon } from '@/components/common'
+import FolderPlate from './FolderPlate.vue'
 import { PanelPanelConfigStyleEnum } from '@/enums'
+import { t } from '@/locales'
 
 interface Prop {
   itemInfo?: Panel.ItemInfo
@@ -10,7 +12,8 @@ interface Prop {
   iconTextColor?: string
   iconTextInfoHideDescription: boolean
   iconTextIconHideTitle: boolean
-  style: PanelPanelConfigStyleEnum
+  // 注意：不要命名为 style —— style 是 Vue 保留属性，动态绑定 :style="变量" 不会进入 props
+  panelStyle: PanelPanelConfigStyleEnum
 }
 
 const props = withDefaults(defineProps<Prop>(), {
@@ -37,13 +40,27 @@ const itemIconSize = computed(() => {
   // 直接传递 props.size，让图标 100% 填充容器
   return props.size
 })
+
+// 是否为文件夹图标
+const isFolder = computed(() => props.itemInfo?.isFolder === 1)
+
+// 文件夹内图标数量
+const childCount = computed(() => props.itemInfo?.children?.length || 0)
+
+// 文件夹卡片在详情风格下的描述文案
+const folderDescription = computed(() => {
+  if (props.itemInfo?.description)
+    return props.itemInfo.description
+
+  return isFolder.value ? t('iconItem.itemsCount', { count: childCount.value }) : ''
+})
 </script>
 
 <template>
   <div class="app-icon w-full">
     <!-- 详情图标 -->
     <div
-      v-if="style === PanelPanelConfigStyleEnum.info"
+      v-if="panelStyle === PanelPanelConfigStyleEnum.info"
       class="app-icon-info w-full rounded-2xl transition-all duration-200 pc-hover-effect flex"
       :style="{ background: itemInfo?.icon?.backgroundColor || defaultBackground }"
       @contextmenu.prevent
@@ -52,7 +69,8 @@ const itemIconSize = computed(() => {
       <!-- 图标 -->
       <div class="app-icon-info-icon">
         <div class="w-full h-full flex items-center justify-center ">
-          <ItemIcon :item-icon="itemInfo?.icon" :size="itemIconSize" :icon-color="iconTextColor" class="overflow-hidden" style="border-radius: 1rem;" />
+          <FolderPlate v-if="isFolder" :item="itemInfo" :mini-size="18" />
+          <ItemIcon v-else :item-icon="itemInfo?.icon" :size="itemIconSize" :icon-color="iconTextColor" class="overflow-hidden" style="border-radius: 1rem;" />
         </div>
       </div>
 
@@ -64,14 +82,14 @@ const itemIconSize = computed(() => {
             {{ itemInfo?.title }}
           </div>
           <div v-if="!iconTextInfoHideDescription" class="app-icon-info-text-box-description">
-            {{ itemInfo?.description }}
+            {{ folderDescription }}
           </div>
         </div>
       </div>
     </div>
 
     <!-- 极简 (小) 图标（APP） -->
-    <div v-if="style === PanelPanelConfigStyleEnum.icon" class="app-icon-small-container"
+    <div v-if="panelStyle === PanelPanelConfigStyleEnum.icon" class="app-icon-small-container"
       @contextmenu.prevent
       @touchstart.passive
     >
@@ -79,9 +97,11 @@ const itemIconSize = computed(() => {
       <div class="app-icon-small-icon-wrapper">
         <div
           class="app-icon-small-icon rounded-2xl sunpanel mx-auto rounded-2xl transition-all duration-200 pc-hover-effect"
+          :class="{ 'folder-cell': isFolder, 'overflow-hidden': !isFolder }"
           :title="itemInfo?.description"
         >
-          <ItemIcon :item-icon="itemInfo?.icon" :size="itemIconSize" :icon-color="iconTextColor" style="border-radius: 1rem;" />
+          <FolderPlate v-if="isFolder" :item="itemInfo" :mini-size="20" />
+          <ItemIcon v-else :item-icon="itemInfo?.icon" :size="itemIconSize" :icon-color="iconTextColor" style="border-radius: 1rem;" />
         </div>
       </div>
       <!-- 文字层（绝对定位，不影响图标） -->
@@ -94,11 +114,11 @@ const itemIconSize = computed(() => {
           <span>{{ itemInfo?.title }}</span>
         </div>
         <div
-          v-if="!iconTextInfoHideDescription && itemInfo?.description"
+          v-if="!iconTextInfoHideDescription && folderDescription"
           class="app-icon-small-description text-center text-xs opacity-80 cursor-pointer mt-[1px]"
           :style="{ color: iconTextColor }"
         >
-          {{ itemInfo?.description }}
+          {{ folderDescription }}
         </div>
       </div>
     </div>
@@ -116,16 +136,22 @@ const itemIconSize = computed(() => {
 
 /* 响应式图标块设计 */
 .app-icon-info-icon {
-  width: min(70px, 100%);
-  height: min(70px, 100%);
-  min-width: min(70px, 100%);
-  aspect-ratio: 1 / 1;
+  width: 70px;
+  height: 70px;
+  flex: none;
+  position: relative;
   border-radius: 1rem; /* rounded-2xl = 1rem */
 }
 
+/* 详情风格下文件夹卡片直接铺满图标盒，不依赖中间包装层的高度 */
+.app-icon-info-icon :deep(.folder-plate) {
+  position: absolute;
+  inset: 0;
+}
+
 .app-icon-small-icon {
-  width: min(70px, 100%);
-  height: min(70px, 100%);
+  width: 100%;
+  height: 100%;
   aspect-ratio: 1 / 1;
   border-radius: 1rem; /* rounded-2xl = 1rem */
   overflow: hidden;
@@ -138,10 +164,18 @@ const itemIconSize = computed(() => {
   margin: 10px 0; /* 移动端：只保留上下间距，左右由 Grid gap 控制 */
 }
 
-/* 图标包装层 - 固定宽度，不受文字影响 */
+/* 文件夹图标需要显示叠层与数量角标，不能裁剪 */
+.folder-cell {
+  background: transparent !important;
+  overflow: visible !important;
+  box-shadow: none !important;
+}
+
+/* 图标包装层 - 固定尺寸。必须给确定的高宽：
+   FolderPlate（文件夹叠层卡片）全部用百分比尺寸，父链不确定时整个卡片会塌陷为 0 */
 .app-icon-small-icon-wrapper {
-  width: min(70px, 100%);
-  height: min(70px, 100%);
+  width: 70px;
+  height: 70px;
   margin: 0 auto;
 }
 
@@ -160,7 +194,7 @@ const itemIconSize = computed(() => {
   left: 50%;
   transform: translateX(-50%); /* 居中对齐 */
   width: max-content;
-  min-width: min(70px, 100%);
+  min-width: 70px;
   max-width: 280px; /* 最大宽度限制 */
   text-align: center;
   pointer-events: none; /* 让点击事件穿透 */
@@ -197,16 +231,14 @@ const itemIconSize = computed(() => {
 /* 针对不同屏幕尺寸的等比缩小 */
 @media (max-width: 1024px) {
   .app-icon-info-icon {
-    width: min(60px, 100%);
-    height: min(60px, 100%);
-    min-width: min(60px, 100%);
+    width: 60px;
+    height: 60px;
     border-radius: 1rem; /* 保持与 PC 端一致的圆角 */
   }
   
-  .app-icon-small-icon {
-    width: min(60px, 100%);
-    height: min(60px, 100%);
-    border-radius: 1rem; /* 保持与 PC 端一致的圆角 */
+  .app-icon-small-icon-wrapper {
+    width: 60px;
+    height: 60px;
   }
 }
 
@@ -238,16 +270,14 @@ const itemIconSize = computed(() => {
 
 @media (max-width: 768px) {
   .app-icon-info-icon {
-    width: min(60px, 100%);
-    height: min(60px, 100%);
-    min-width: min(60px, 100%);
+    width: 60px;
+    height: 60px;
     border-radius: 1rem; /* 保持与 PC 端一致的圆角 */
   }
   
-  .app-icon-small-icon {
-    width: min(60px, 100%);
-    height: min(60px, 100%);
-    border-radius: 1rem; /* 保持与 PC 端一致的圆角 */
+  .app-icon-small-icon-wrapper {
+    width: 60px;
+    height: 60px;
   }
   
   .app-icon-info-text-box-title {
@@ -281,16 +311,14 @@ const itemIconSize = computed(() => {
 
 @media (max-width: 480px) {
   .app-icon-info-icon {
-    width: min(60px, 100%);
-    height: min(60px, 100%);
-    min-width: min(60px, 100%);
+    width: 60px;
+    height: 60px;
     border-radius: 1rem; /* 保持与 PC 端一致的圆角 */
   }
   
-  .app-icon-small-icon {
-    width: min(60px, 100%);
-    height: min(60px, 100%);
-    border-radius: 1rem; /* 保持与 PC 端一致的圆角 */
+  .app-icon-small-icon-wrapper {
+    width: 60px;
+    height: 60px;
   }
   
   .app-icon-info-text-box-title {
@@ -321,16 +349,14 @@ const itemIconSize = computed(() => {
 
 @media (max-width: 360px) {
   .app-icon-info-icon {
-    width: min(60px, 100%);
-    height: min(60px, 100%);
-    min-width: min(60px, 100%);
+    width: 60px;
+    height: 60px;
     border-radius: 1rem; /* 保持与 PC 端一致的圆角 */
   }
   
-  .app-icon-small-icon {
-    width: min(60px, 100%);
-    height: min(60px, 100%);
-    border-radius: 1rem; /* 保持与 PC 端一致的圆角 */
+  .app-icon-small-icon-wrapper {
+    width: 60px;
+    height: 60px;
   }
   
   .app-icon-info-text-box-title {

@@ -22,3 +22,9 @@ type ItemIconGetSiteFaviconReq struct {
 type ItemIconGetSiteFaviconResp struct {
 	IconUrl string `json:"iconUrl"`
 }
+
+// ItemIconMoveRequest 图标移动到文件夹
+type ItemIconMoveRequest struct {
+	Id       uint `json:"id"`
+	ParentId int  `json:"parentId"` // 目标文件夹ID，0=分组根目录
+}

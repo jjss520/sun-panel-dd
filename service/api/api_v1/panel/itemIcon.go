@@ -43,6 +43,19 @@ func (a *ItemIcon) Edit(c *gin.Context) {
 
 	req.UserId = userInfo.ID
 
+	// 文件夹不需要 URL
+	if req.IsFolder == 1 {
+		req.Url = ""
+		req.LanUrl = ""
+		req.OpenMethod = 0
+	}
+
+	// 不能把自己挂到自己下面
+	if req.ParentId != 0 && uint(req.ParentId) == req.ID {
+		apiReturn.ErrorParamFomat(c, "Parent is invalid")
+		return
+	}
+
 	// json转字符串
 	if j, err := json.Marshal(req.Icon); err == nil {
 		req.IconJson = string(j)
@@ -50,7 +63,7 @@ func (a *ItemIcon) Edit(c *gin.Context) {
 
 	if req.ID != 0 {
 		// 修改
-		updateField := []string{"IconJson", "Icon", "Title", "Url", "LanUrl", "Description", "OpenMethod", "GroupId", "UserId", "ItemIconGroupId", "LanOnly"}
+		updateField := []string{"IconJson", "Icon", "Title", "Url", "LanUrl", "Description", "OpenMethod", "GroupId", "UserId", "ItemIconGroupId", "LanOnly", "ParentId", "IsFolder"}
 		if req.Sort != 0 {
 			updateField = append(updateField, "Sort")
 		}
@@ -156,12 +169,81 @@ func (a *ItemIcon) Deletes(c *gin.Context) {
 	}
 
 	userInfo, _ := base.GetCurrentUserInfo(c)
-	if err := global.Db.Delete(&models.ItemIcon{}, "id in ? AND user_id=?", req.Ids, userInfo.ID).Error; err != nil {
+
+	// 删除文件夹时，级联删除它下面的所有图标
+	allIds := req.Ids
+	if childIds, err := (&models.ItemIcon{}).GetAllChildrenIds(global.Db, userInfo.ID, req.Ids); err == nil {
+		allIds = append(allIds, childIds...)
+	}
+
+	if err := global.Db.Delete(&models.ItemIcon{}, "id in ? AND user_id=?", allIds, userInfo.ID).Error; err != nil {
 		apiReturn.ErrorDatabase(c, err.Error())
 		return
 	}
 
 	apiReturn.Success(c)
+}
+
+// 移动到指定文件夹（parentId=0 表示移回分组根目录）
+func (a *ItemIcon) Move(c *gin.Context) {
+	req := panelApiStructs.ItemIconMoveRequest{}
+
+	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
+		apiReturn.ErrorParamFomat(c, err.Error())
+		return
+	}
+
+	userInfo, _ := base.GetCurrentUserInfo(c)
+
+	if req.Id == 0 {
+		apiReturn.ErrorParamFomat(c, "Id is mandatory")
+		return
+	}
+
+	item := models.ItemIcon{}
+	if err := global.Db.Where("id=? AND user_id=?", req.Id, userInfo.ID).First(&item).Error; err != nil {
+		apiReturn.ErrorDataNotFound(c)
+		return
+	}
+
+	if uint(req.ParentId) == item.ID {
+		apiReturn.ErrorParamFomat(c, "Parent is invalid")
+		return
+	}
+
+	if req.ParentId != 0 {
+		parent := models.ItemIcon{}
+		if err := global.Db.Where("id=? AND user_id=?", req.ParentId, userInfo.ID).First(&parent).Error; err != nil {
+			apiReturn.ErrorDataNotFound(c)
+			return
+		}
+		if parent.IsFolder != 1 {
+			apiReturn.ErrorParamFomat(c, "Parent is not a folder")
+			return
+		}
+
+		// 不允许把文件夹移动到自己的子孙里（避免出现环）
+		childrenIds, err := (&models.ItemIcon{}).GetAllChildrenIds(global.Db, userInfo.ID, []uint{item.ID})
+		if err != nil {
+			apiReturn.ErrorDatabase(c, err.Error())
+			return
+		}
+		for _, cid := range childrenIds {
+			if cid == uint(req.ParentId) {
+				apiReturn.ErrorParamFomat(c, "Parent is invalid")
+				return
+			}
+		}
+	}
+
+	if err := global.Db.Model(&models.ItemIcon{}).
+		Where("id=? AND user_id=?", item.ID, userInfo.ID).
+		Updates(map[string]interface{}{"parent_id": req.ParentId, "sort": 9999}).Error; err != nil {
+		apiReturn.ErrorDatabase(c, err.Error())
+		return
+	}
+
+	apiReturn.SuccessData(c, map[string]interface{}{"id": item.ID, "parentId": req.ParentId})
 }
 
 // 保存排序

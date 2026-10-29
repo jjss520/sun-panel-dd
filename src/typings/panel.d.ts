@@ -21,6 +21,12 @@ declare namespace Panel {
         itemIconGroupId ?:number
         // 仅内网展示 0:关闭 1:开启
         lanOnly?: number
+        // 所属文件夹ID，0 表示直接挂在分组下
+        parentId?: number
+        // 是否为文件夹 0:否 1:是
+        isFolder?: number
+        // 仅前端使用：文件夹下的图标
+        children?: ItemInfo[]
     }
 
     interface ItemIconGroup extends Common.InfoBase {

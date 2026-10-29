@@ -12,9 +12,12 @@ interface Props {
   itemInfo: Panel.Info | null
   itemGroupId?: number
   pageId?: number  // 当前页面ID
+  parentId?: number // 新增时所属的文件夹ID，0=分组根目录
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  parentId: 0,
+})
 const emit = defineEmits<Emit>()
 const ms = useMessage()
 const submitLoading = ref(false)
@@ -32,6 +35,8 @@ const restoreDefault: Panel.Info = {
   description: '',
   openMethod: 2,
   lanOnly: 0,
+  parentId: 0,
+  isFolder: 0,
 }
 
 interface Emit {
@@ -42,24 +47,22 @@ interface Emit {
 const model = ref<Panel.Info>(props.itemInfo ? { ...props.itemInfo } : { ...restoreDefault })
 const formRef = ref<FormInst | null>(null)
 
-const rules: FormRules = {
+// 文件夹不需要填地址，动态去掉校验
+const rules = computed<FormRules>(() => ({
   title: {
     required: true,
     trigger: 'blur',
     message: t('form.required'),
   },
-  url: {
-    required: true,
-    trigger: 'blur',
-    type: 'string',
-    message: t('form.required'),
-  },
-  // itemIconGroupId: {
-  //   required: true,
-  //   trigger: ['blur', 'change'],
-  //   message: t('form.required'),
-  // },
-}
+  url: model.value.isFolder === 1
+    ? {}
+    : {
+        required: true,
+        trigger: 'blur',
+        type: 'string',
+        message: t('form.required'),
+      },
+}))
 
 const options = [
   {
@@ -138,6 +141,9 @@ watch(() => props.visible, (newValue) => {
     model.value = props.itemInfo ? { ...props.itemInfo } : { ...restoreDefault }
     if (props.itemGroupId)
       model.value.itemIconGroupId = props.itemGroupId
+    // 新增到指定文件夹
+    if (!props.itemInfo)
+      model.value.parentId = props.parentId || 0
   }
 
   getGroupListOptions()
@@ -203,7 +209,7 @@ async function getGroupListOptions() {
         <NFormItem path="icon" :label="$t('common.icon')">
           <IconEditor v-model:item-icon="model.icon" />
         </NFormItem>
-        <NFormItem path="url" :label="$t('iconItem.url')">
+        <NFormItem v-if="model.isFolder !== 1" path="url" :label="$t('iconItem.url')">
           <!-- <NSelect :style="{ width: '100px' }" :options="urlProtocolOptions" /> -->
           <NInputGroup>
             <NInput v-model:value="model.url" type="text" :maxlength="1000" placeholder="http(s)://" />
@@ -212,7 +218,7 @@ async function getGroupListOptions() {
             </NButton>
           </NInputGroup>
         </NFormItem>
-        <NFormItem path="lanUrl" :label="$t('iconItem.lanUrl')">
+        <NFormItem v-if="model.isFolder !== 1" path="lanUrl" :label="$t('iconItem.lanUrl')">
           <NInputGroup>
             <NInput v-model:value="model.lanUrl" type="text" :maxlength="1000" :placeholder="$t('iconItem.lanUrlInputPlaceholder')" />
             <NButton :disabled="!model.lanUrl" :loading="getIconLoading[1]" @click="getIconByUrl(model.lanUrl || '', 1)">
@@ -223,10 +229,10 @@ async function getGroupListOptions() {
         <NFormItem path="description" :label="$t('common.description')">
           <NInput v-model:value="model.description" type="text" show-count :maxlength="100" />
         </NFormItem>
-        <NFormItem path="openMethod" :label="$t('iconItem.openMethod')">
+        <NFormItem v-if="model.isFolder !== 1" path="openMethod" :label="$t('iconItem.openMethod')">
           <NSelect v-model:value="model.openMethod" :options="options" />
         </NFormItem>
-        <NFormItem path="lanOnly" :label="$t('iconItem.lanOnly')">
+        <NFormItem v-if="model.isFolder !== 1" path="lanOnly" :label="$t('iconItem.lanOnly')">
           <NSwitch v-model:value="model.lanOnly" :checked-value="1" :unchecked-value="0" />
         </NFormItem>
       </NForm>
