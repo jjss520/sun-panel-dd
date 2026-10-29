@@ -1741,13 +1741,9 @@ async function saveBookmarkChanges() {
 			return;
 		}
 
-		// 只有书签才需要添加URL协议检查和补充
+		// 书签URL保持原样，不自动添加协议
 		if (!isFolderItem && currentEditBookmark.value.url.trim()) {
-			let url = currentEditBookmark.value.url.trim();
-			if (!url.startsWith('http://') && !url.startsWith('https://')) {
-				url = 'https://' + url;
-				currentEditBookmark.value.url = url;
-			}
+			currentEditBookmark.value.url = currentEditBookmark.value.url.trim();
 		}
 
 		// 移除favicon自动获取逻辑，避免CORS问题

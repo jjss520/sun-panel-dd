@@ -960,19 +960,14 @@ async function handleItemClick(itemGroupIndex: number, item: Panel.ItemInfo) {
     return
   }
 
-  // 辅助函数：标准化URL（自动添加http://）
+  // 辅助函数：标准化URL（保持原样，不自动添加协议）
   const normalizeUrl = (url: string | undefined | null) => {
     if (!url) return ''
     let trimmed = url.trim()
     if (!trimmed) return ''
 
-    // 如果是 javascript: 等特殊协议或已经是 http/https 开头，或者是相对路径，则不处理
-    if (/^[a-z]+:/i.test(trimmed) || trimmed.startsWith('/') || trimmed.startsWith('./') || trimmed.startsWith('../')) {
-      return trimmed
-    }
-
-    // 默认为 http
-    return 'http://' + trimmed
+    // 直接返回原始URL，不添加任何协议
+    return trimmed
   }
 
   // 辅助函数：检查URL是否有效
