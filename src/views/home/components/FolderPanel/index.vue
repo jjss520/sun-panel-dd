@@ -342,8 +342,8 @@ defineExpose({ back })
             </div>
           </header>
 
-          <!-- 面包屑 -->
-          <nav class="fp-crumbs">
+          <!-- 面包屑：仅在进入子文件夹后显示，根目录时与标题重复 -->
+          <nav v-if="crumbs.length > 1" class="fp-crumbs">
             <template v-for="(crumb, index) in crumbs" :key="index">
               <span v-if="index > 0" class="fp-sep">›</span>
               <span
