@@ -126,11 +126,40 @@ function back() {
 }
 
 function handleItemClick(item: Panel.ItemInfo) {
+  // 长按弹菜单后的那次 click 不触发打开
+  if (lpFired) {
+    lpFired = false
+    return
+  }
   if (item.isFolder === 1) {
     navInto(item.id as number)
     return
   }
   emit('select', item)
+}
+
+// 移动端长按弹出菜单（手机没有右键）
+let lpTimerId: number | null = null
+let lpFired = false
+
+function onTouchStart(e: TouchEvent, item: Panel.ItemInfo) {
+  const touch = e.touches[0]
+  lpFired = false
+  if (lpTimerId !== null)
+    clearTimeout(lpTimerId)
+
+  lpTimerId = window.setTimeout(() => {
+    lpFired = true
+    // 以按住位置为中心弹出菜单
+    openMenu({ clientX: touch.clientX, clientY: touch.clientY, preventDefault: () => {} } as MouseEvent, item)
+  }, 500)
+}
+
+function onTouchEnd() {
+  if (lpTimerId !== null) {
+    clearTimeout(lpTimerId)
+    lpTimerId = null
+  }
 }
 
 function openMenu(e: MouseEvent, item: Panel.ItemInfo) {
@@ -333,6 +362,9 @@ defineExpose({ back })
                 :draggable="editable"
                 @click="handleItemClick(item)"
                 @contextmenu="openMenu($event, item)"
+                @touchstart="onTouchStart($event, item)"
+                @touchmove="onTouchEnd()"
+                @touchend="onTouchEnd()"
                 @dragstart="onDragStart($event, item)"
                 @dragover="onDragOver($event, item)"
                 @dragleave="onDragLeave(item)"
