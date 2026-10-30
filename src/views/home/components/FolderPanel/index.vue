@@ -18,13 +18,15 @@ interface Props {
   iconTextColor?: string
   iconTextInfoHideDescription?: boolean
   iconTextIconHideTitle?: boolean
-  editable?: boolean // 登录 + 编辑模式，可增删改
+  editable?: boolean // 登录 + 编辑模式，可增删改（控制头部工具按钮）
+  menuEditable?: boolean // 仅登录即可（控制长按/右键菜单的编辑项，与首页菜单一致）
   isMobile?: boolean
   moveTargets?: MoveTarget[] // 可移动到的其他文件夹
 }
 
 const props = withDefaults(defineProps<Props>(), {
   editable: false,
+  menuEditable: false,
   isMobile: false,
   moveTargets: () => [],
 })
@@ -32,6 +34,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   (e: 'update:visible', visible: boolean): void
   (e: 'select', item: Panel.ItemInfo): void
+  (e: 'open-url', item: Panel.ItemInfo, target: 'wan' | 'lan'): void
   (e: 'edit', item: Panel.ItemInfo): void
   (e: 'add-item', parentId: number): void
   (e: 'delete', item: Panel.ItemInfo): void
@@ -155,11 +158,14 @@ function onTouchStart(e: TouchEvent, item: Panel.ItemInfo) {
   }, 500)
 }
 
-function onTouchEnd() {
+function onTouchEnd(e?: TouchEvent) {
   if (lpTimerId !== null) {
     clearTimeout(lpTimerId)
     lpTimerId = null
   }
+  // 长按菜单已弹出时，阻止抬手后的合成 click 触发 clickoutside 把菜单关掉
+  if (e && lpFired)
+    e.preventDefault()
 }
 
 function openMenu(e: MouseEvent, item: Panel.ItemInfo) {
@@ -182,7 +188,14 @@ const menuOptions = computed(() => {
     { label: t('iconItem.open'), key: 'open' },
   ]
 
-  if (props.editable) {
+  // 公网/内网地址入口（与首页右键菜单一致）
+  if (item.url)
+    options.push({ label: t('panelHome.openWanUrl'), key: 'openWanUrl' })
+  if (item.lanUrl)
+    options.push({ label: t('panelHome.openLanUrl'), key: 'openLanUrl' })
+
+  // 菜单的编辑项与首页右键菜单一致：登录即可，不依赖编辑模式
+  if (props.editable || props.menuEditable) {
     options.push({ label: t('common.edit'), key: 'edit' })
 
     const moveChildren: any[] = [
@@ -210,6 +223,10 @@ function handleMenuSelect(key: string) {
 
   if (key === 'open') {
     handleItemClick(item)
+    return
+  }
+  if (key === 'openWanUrl' || key === 'openLanUrl') {
+    emit('open-url', item, key === 'openWanUrl' ? 'wan' : 'lan')
     return
   }
   if (key === 'edit') {
@@ -364,7 +381,7 @@ defineExpose({ back })
                 @contextmenu="openMenu($event, item)"
                 @touchstart="onTouchStart($event, item)"
                 @touchmove="onTouchEnd()"
-                @touchend="onTouchEnd()"
+                @touchend="onTouchEnd($event)"
                 @dragstart="onDragStart($event, item)"
                 @dragover="onDragOver($event, item)"
                 @dragleave="onDragLeave(item)"
@@ -565,6 +582,10 @@ defineExpose({ back })
 .fp-cell {
   min-width: 0;
   transition: transform 0.16s ease, opacity 0.16s ease;
+  /* 移动端：长按弹菜单，禁用系统默认长按行为 */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .fp-cell.is-dragging {

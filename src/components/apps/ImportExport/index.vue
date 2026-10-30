@@ -8,7 +8,7 @@ import { ConfigVersionLowError, FormatError, exportJson, importJsonString } from
 import { get as getAbout } from '@/api/system/about'
 import { edit as addGroup, getList as getGroupList } from '@/api/panel/itemIconGroup'
 import { ss } from '@/utils/storage/local'
-import { addMultiple as addMultipleIcons, getListByGroupId } from '@/api/panel/itemIcon'
+import { addMultiple as addMultipleIcons, getListByGroupId, move as moveIcons } from '@/api/panel/itemIcon'
 import { getNotepadList, saveNotepadContent, deleteNotepad, type NotepadInfo } from '@/api/panel/notepad'
 import { getList as getPageList, edit as addPage } from '@/api/panel/itemPage'
 
@@ -97,33 +97,71 @@ async function importIcons(): Promise<string | null> {
         ss.remove('groupListCache')
 
         if (groupId) {
-          let addIcons: Panel.ItemInfo[] = []
+          // 导出数据里的图标ID -> 新库里的图标ID 映射，用于恢复文件夹层级
+          const idMap = new Map<number, number>()
+          const addIcons: Panel.ItemInfo[] = []
+          const addExportIds: number[] = []
+          let importError: string | null = null
 
+          const flush = async () => {
+            if (!addIcons.length)
+              return
+            const response = await addMultipleIcons(addIcons)
+            if (response.code !== 0) {
+              importError = response.msg
+              return
+            }
+            // addMultiple 返回按请求顺序排列的新建记录（含新ID）
+            const created = (response.data || []) as Panel.ItemInfo[]
+            created.forEach((row, idx) => {
+              const exportId = addExportIds[idx]
+              if (exportId && row?.id)
+                idMap.set(exportId, row.id)
+            })
+            addIcons.length = 0
+            addExportIds.length = 0
+          }
 
-          // 批量添加子项
-          for (let iconI = 0; iconI < element.children.length; iconI++) {
-            const iconElement = element.children[iconI]
-
+          // 批量创建（先都不带父级，创建后统一挂到文件夹下）
+          for (const iconElement of element.children) {
             addIcons.push({
               title: iconElement.title,
               sort: iconElement.sort,
               icon: iconElement.icon,
-              url: iconElement.url,
-              lanUrl: iconElement.lanUrl,
+              url: iconElement.isFolder === 1 ? '' : iconElement.url,
+              lanUrl: iconElement.isFolder === 1 ? '' : iconElement.lanUrl,
               description: iconElement.description,
               openMethod: iconElement.openMethod,
+              lanOnly: iconElement.lanOnly || 0,
+              isFolder: iconElement.isFolder || 0,
+              parentId: 0, // 新ID未知，创建后通过 move 恢复层级
               itemIconGroupId: groupId,
             })
+            addExportIds.push(iconElement.id as number)
 
-            // 每 batchSize 个添加一次
-            if (addIcons.length === batchSize || iconI === element.children.length - 1) {
-              const response = await addMultipleIcons(addIcons)
+            if (addIcons.length >= batchSize)
+              await flush()
+            if (importError)
+              break
+          }
+          if (!importError)
+            await flush()
 
-              if (response.code !== 0)
-                return response.msg
+          if (importError)
+            return importError
 
-              addIcons = []
-            }
+          // 恢复文件夹层级：把有父级的图标挂到对应的新文件夹下
+          for (const iconElement of element.children) {
+            const exportParentId = iconElement.parentId as number
+            if (!exportParentId)
+              continue
+            const newId = idMap.get(iconElement.id as number)
+            const newParentId = idMap.get(exportParentId)
+            if (!newId || !newParentId)
+              continue
+            const moveResponse = await moveIcons<{ id: number, parentId: number }>(newId, newParentId)
+            if (moveResponse.code !== 0)
+              return moveResponse.msg
           }
         }
       }
@@ -176,14 +214,17 @@ async function exportIcons(): Promise<IconGroup[]> {
       if (res.code === 0) {
         for (const iconElement of res.data.list) {
           group.children.push({
+            id: iconElement.id, // 保留原始ID，导入时用于恢复文件夹父子关系
             icon: iconElement.icon,
             sort: iconElement.sort || 99999,
             title: iconElement.title,
-            url: iconElement.url,
+            url: iconElement.url || '',
             lanUrl: iconElement.lanUrl || '',
             description: iconElement.description || '',
-            openMethod: iconElement.openMethod || 1,
+            openMethod: iconElement.isFolder === 1 ? 0 : (iconElement.openMethod || 1),
             lanOnly: iconElement.lanOnly || 0,
+            isFolder: iconElement.isFolder || 0,
+            parentId: iconElement.parentId || 0,
           })
         }
       }

@@ -33,6 +33,7 @@ export interface JsonStructure {
 
 // 图标
 export interface Icon {
+  id?: number // 导出时的原始ID，用于导入时恢复文件夹父子关系
   title: string
   sort: number
   icon: Panel.ItemIcon | null
@@ -41,6 +42,8 @@ export interface Icon {
   description: string
   openMethod: number
   lanOnly?: number
+  isFolder?: number // 1=文件夹
+  parentId?: number // 导出时的父文件夹原始ID，0=分组根目录
 }
 
 // 图标组

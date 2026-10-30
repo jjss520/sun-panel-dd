@@ -1403,6 +1403,16 @@ async function handleFolderItemSelect(item: Panel.ItemInfo) {
     folderPanelVisible.value = false
 }
 
+// 弹层菜单里打开公网/内网地址
+function handleFolderOpenUrl(item: Panel.ItemInfo, target: 'wan' | 'lan') {
+  const url = target === 'wan' ? item.url : item.lanUrl
+  if (!url)
+    return
+  openPage(item.openMethod, url, item.title)
+  if (item.openMethod !== 2)
+    folderPanelVisible.value = false
+}
+
 // 根据网络模式过滤项目
 function filterItemsByNetworkMode() {
   // WAN、LAN 和 auto 模式需要过滤
@@ -1762,12 +1772,16 @@ function handleTouchStart(e: TouchEvent, itemGroupIndex: number, item: Panel.Ite
   }, 500)
 }
 
-function handleTouchEnd() {
+function handleTouchEnd(e?: TouchEvent) {
   // 清除定时器
   if (longPressTimerId !== null) {
     clearTimeout(longPressTimerId)
     longPressTimerId = null
   }
+  // 长按菜单已弹出时，阻止浏览器在抬手后补发的合成 click，
+  // 否则该 click 会冒泡到 document 被 NDropdown 的 clickoutside 捕获，导致菜单刚弹出就关闭
+  if (e && isLongPressing)
+    e.preventDefault()
 }
 
 function handleLongPress(itemGroupIndex: number, item: Panel.ItemInfo) {
@@ -2365,7 +2379,7 @@ function getNetworkModeButtonIcon() {
                         :draggable="canDragIntoFolder && !itemGroup.sortStatus"
                         @contextmenu="(e) => !isMobile && handleContextMenu(e, itemGroupIndex, item)"
                         @touchstart="(e) => handleTouchStart(e, itemGroupIndex, item)"
-                        @touchend="handleTouchEnd()"
+                        @touchend="handleTouchEnd($event)"
                         @touchmove="handleTouchEnd()"
                         @dragstart="handleIconDragStart($event, item)"
                         @dragend="handleIconDragEnd"
@@ -2416,7 +2430,7 @@ function getNetworkModeButtonIcon() {
                         :draggable="canDragIntoFolder && !itemGroup.sortStatus"
                         @contextmenu="(e) => !isMobile && handleContextMenu(e, itemGroupIndex, item)"
                         @touchstart="(e) => handleTouchStart(e, itemGroupIndex, item)"
-                        @touchend="handleTouchEnd()"
+                        @touchend="handleTouchEnd($event)"
                         @touchmove="handleTouchEnd()"
                         @dragstart="handleIconDragStart($event, item)"
                         @dragend="handleIconDragEnd"
@@ -2609,9 +2623,11 @@ function getNetworkModeButtonIcon() {
       :icon-text-info-hide-description="panelState.panelConfig.iconTextInfoHideDescription || false"
       :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
       :editable="canEditFolder"
+      :menu-editable="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN"
       :is-mobile="isMobile"
       :move-targets="folderMoveTargets"
       @select="handleFolderItemSelect"
+      @open-url="handleFolderOpenUrl"
       @edit="handleEditItem"
       @add-item="(parentId) => handleAddItem(currentFolder?.itemIconGroupId, parentId)"
       @delete="confirmDeleteItem"
@@ -2771,6 +2787,13 @@ html {
 
 .icon-drag-wrap[draggable='true']:active {
   cursor: grabbing;
+}
+
+/* 移动端：长按图标弹出菜单，禁用系统默认的长按行为（文本选择/iOS呼出）避免干扰 */
+.icon-drag-wrap {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 </style>
 
