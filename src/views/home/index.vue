@@ -1031,8 +1031,9 @@ async function openItemByNetworkMode(item: Panel.ItemInfo) {
 
   if (shouldCheckIntranet) {
     // 情况1：新窗口打开 (openMethod === 2)
-    // 需要先打开空白窗口避开拦截，然后异步探测
-    if (item.openMethod === 2) {
+    // 桌面端：先打开空白窗口避开拦截，然后异步探测
+    // 移动端：真机浏览器不允许异步延迟后导航预开的空白窗口，会一直停在 about:blank，改为先探测再直接打开
+    if (item.openMethod === 2 && !isMobile.value) {
       const newWindow = window.open('about:blank', '_blank')
       if (newWindow) {
         // 探测
