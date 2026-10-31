@@ -45,6 +45,8 @@ const badge = computed(() => children.value.length)
 
 <style scoped>
 .folder-plate {
+  /* 小图标的圆角比例：与主图标 12px/70px≈17% 的观感保持一致 */
+  --folder-mini-radius: 22%;
   position: relative;
   width: 100%;
   height: 100%;
@@ -65,7 +67,7 @@ const badge = computed(() => children.value.length)
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 24%;
+  border-radius: var(--folder-mini-radius);
   overflow: hidden;
   background: rgba(255, 255, 255, 0.08);
 }
@@ -94,15 +96,19 @@ const badge = computed(() => children.value.length)
   pointer-events: none;
 }
 
-/* 让小图标填满格子，避免受内部固定尺寸影响 */
-.folder-mini :deep(.item-icon) {
+/* ItemIcon 内部写死了 12px 圆角，小尺寸下会变成圆形，这里统一按比例覆盖为圆角矩形；
+   同时让小图标填满格子，避免受内部固定尺寸影响 */
+.folder-mini :deep(.item-icon),
+.folder-mini :deep(.item-icon > div),
+.folder-mini :deep(.n-avatar),
+.folder-mini :deep(.n-image) {
   width: 100% !important;
   height: 100% !important;
+  border-radius: var(--folder-mini-radius) !important;
+  overflow: hidden;
 }
 
-.folder-mini :deep(.n-avatar) {
-  width: 100% !important;
-  height: 100% !important;
-  border-radius: 24% !important;
+.folder-mini :deep(.n-image img) {
+  border-radius: var(--folder-mini-radius) !important;
 }
 </style>
