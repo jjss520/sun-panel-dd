@@ -8,6 +8,7 @@ import { ConfigVersionLowError, FormatError, exportJson, importJsonString } from
 import { get as getAbout } from '@/api/system/about'
 import { edit as addGroup, getList as getGroupList } from '@/api/panel/itemIconGroup'
 import { ss } from '@/utils/storage/local'
+import { clearIconListCache } from '@/utils/storage/iconListCache'
 import { addMultiple as addMultipleIcons, getListByGroupId, move as moveIcons } from '@/api/panel/itemIcon'
 import { getNotepadList, saveNotepadContent, deleteNotepad, type NotepadInfo } from '@/api/panel/notepad'
 import { getList as getPageList, edit as addPage } from '@/api/panel/itemPage'
@@ -173,12 +174,8 @@ async function importIcons(): Promise<string | null> {
     // 导入完成后，清除页面缓存并触发刷新事件
     console.log('[导入导出] 图标导入完成，触发页面刷新')
     ss.remove('pageListCache')
-    // 清除所有图标列表缓存
-    Object.keys(localStorage).forEach(key => {
-      if (key.startsWith('itemIconList_')) {
-        ss.remove(key)
-      }
-    })
+    // 清除所有图标列表缓存（localStorage + IndexedDB）
+    clearIconListCache()
     // 触发页面更新事件，通知主页刷新
     window.dispatchEvent(new CustomEvent('pagesUpdated'))
 

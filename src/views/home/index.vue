@@ -533,13 +533,8 @@ async function handleRefreshData() {
     ss.remove(GROUP_LIST_CACHE_KEY)
     ss.remove('searchEngineListCache')
 
-    // 直接清除所有localStorage中的图标列表缓存
-    // 由于ss没有getAllKeys方法，我们直接使用原生localStorage API
-    Object.keys(localStorage).forEach(key => {
-      if (key.startsWith(ITEM_ICON_LIST_CACHE_KEY_PREFIX)) {
-        ss.remove(key)
-      }
-    })
+    // 直接清除所有图标列表缓存（localStorage + IndexedDB 一起清）
+    clearIconListCache()
 
     // 重新加载数据
     await loadPages()
@@ -615,6 +610,7 @@ import { getList as getBookmarksList } from '@/api/panel/bookmark'
 import { getList as getGroupList } from '@/api/panel/itemIconGroup'
 import { getList as getPageList } from '@/api/panel/itemPage'
 import { ss } from '@/utils/storage/local'
+import { clearIconListCache, getIconListCache, getIconListCacheSync, removeIconListCache, setIconListCache } from '@/utils/storage/iconListCache'
 import { getSystemSettings } from '@/api/system/systemSetting'
 
 
@@ -624,8 +620,6 @@ const treeData = ref<any[]>([])
 const BOOKMARKS_CACHE_KEY = 'bookmarksTreeCache'
 const GROUP_LIST_CACHE_KEY = 'groupListCache'
 const PAGE_LIST_CACHE_KEY = 'pageListCache'  // 页面列表缓存
-// 图标列表缓存键前缀
-const ITEM_ICON_LIST_CACHE_KEY_PREFIX = 'itemIconList_'
 
 const systemPingUrl = useStorage('systemPingUrl', '')
 
@@ -1184,8 +1178,7 @@ async function refreshGroupIcons(groupId?: number) {
   if (!groupId)
     return
 
-  const cacheKey = `${ITEM_ICON_LIST_CACHE_KEY_PREFIX}${groupId}`
-  ss.remove(cacheKey)
+  removeIconListCache(groupId)
 
   try {
     const res = await getListByGroupId<Common.ListResponse<Panel.ItemInfo[]>>(groupId)
@@ -1193,7 +1186,7 @@ async function refreshGroupIcons(groupId?: number) {
       return
 
     const tree = buildFolderTree(res.data.list)
-    ss.set(cacheKey, res.data.list)
+    setIconListCache(groupId, res.data.list)
 
     // 两条数据链上的同名分组都要更新，否则界面不会刷新
     const applyTo = (groups?: ItemGroup[]) => {
@@ -1442,12 +1435,8 @@ async function loadPages(forceRefresh = false) {
     // 如果强制刷新,清除缓存
     if (forceRefresh) {
       ss.remove(PAGE_LIST_CACHE_KEY)
-      // 清除所有图标缓存
-      Object.keys(localStorage).forEach(key => {
-        if (key.startsWith(ITEM_ICON_LIST_CACHE_KEY_PREFIX)) {
-          ss.remove(key)
-        }
-      })
+      // 清除所有图标缓存（localStorage + IndexedDB）
+      clearIconListCache()
     }
     
     // 1. 尝试从缓存读取页面列表
@@ -1544,20 +1533,34 @@ async function loadPages(forceRefresh = false) {
 // 为分组加载图标
 async function updateGroupIcons(page: PageData, groupIndex: number, groupId: number) {
   try {
-    const cacheKey = `${ITEM_ICON_LIST_CACHE_KEY_PREFIX}${groupId}`
-    const cachedData = ss.get(cacheKey)
-    
-    if (cachedData) {
-      page.groups[groupIndex].items = buildFolderTree(cachedData)
+    // 1. 同步缓存命中：直接出内容，不产生任何等待
+    const syncCached = getIconListCacheSync(groupId)
+    if (syncCached) {
+      page.groups[groupIndex].items = buildFolderTree(syncCached)
       return
     }
-    
+
+    // 2. localStorage 没命中时再看 IndexedDB（大分组会写到这里）
+    const idbCached = await getIconListCache(groupId)
+    if (idbCached) {
+      page.groups[groupIndex].items = buildFolderTree(idbCached)
+      return
+    }
+
+    // 3. 都没有才走网络
+    const startAt = performance.now()
     const res = await getListByGroupId<Common.ListResponse<Panel.ItemInfo[]>>(groupId)
     if (res.code === 0) {
       page.groups[groupIndex].items = buildFolderTree(res.data.list)
-      ss.set(cacheKey, res.data.list)
+      setIconListCache(groupId, res.data.list)
+
+      // 分组数据量大时这里会明显变慢，留个日志方便定位
+      const cost = Math.round(performance.now() - startAt)
+      if (cost > 300)
+        console.warn(`[iconCache] 分组 ${groupId} 未命中缓存，网络加载耗时 ${cost}ms（${res.data.list?.length ?? 0} 个图标）`)
     }
-  } catch (error) {
+  }
+  catch (error) {
     console.error('Failed to load group icons:', error)
   }
 }
@@ -1621,13 +1624,10 @@ async function getList() {
 // 从后端获取组下面的图标
 async function updateItemIconGroupByNet(itemIconGroupIndex: number, itemIconGroupId: number) {
   try {
-    // 1. 定义缓存键
-    const cacheKey = `${ITEM_ICON_LIST_CACHE_KEY_PREFIX}${itemIconGroupId}`
-
-    // 2. 首先尝试从缓存读取数据
-    const cachedData = ss.get(cacheKey)
-    if (cachedData) {
-      items.value[itemIconGroupIndex].items = buildFolderTree(cachedData)
+    // 1. 同步缓存命中（内存 / localStorage）
+    const syncCached = getIconListCacheSync(itemIconGroupId)
+    if (syncCached) {
+      items.value[itemIconGroupIndex].items = buildFolderTree(syncCached)
 
       // 当所有组的数据都加载完成后，应用网络模式过滤
       const allGroupsLoaded = items.value.every(group => group.items !== undefined)
@@ -1636,12 +1636,25 @@ async function updateItemIconGroupByNet(itemIconGroupIndex: number, itemIconGrou
       }
       return
     }
+
+    // 2. localStorage 没命中再查 IndexedDB
+    const idbCached = await getIconListCache(itemIconGroupId)
+    if (idbCached) {
+      items.value[itemIconGroupIndex].items = buildFolderTree(idbCached)
+
+      const allGroupsLoaded = items.value.every(group => group.items !== undefined)
+      if (allGroupsLoaded) {
+        filterItemsByNetworkMode()
+      }
+      return
+    }
+
     const res = await getListByGroupId<Common.ListResponse<Panel.ItemInfo[]>>(itemIconGroupId)
 
     if (res.code === 0) {
       items.value[itemIconGroupIndex].items = buildFolderTree(res.data.list)
-      // 4. 将数据永久保存到缓存中
-      ss.set(cacheKey, res.data.list)
+      // 3. 写入缓存
+      setIconListCache(itemIconGroupId, res.data.list)
 
       // 当所有组的数据都加载完成后，应用网络模式过滤
       const allGroupsLoaded = items.value.every(group => group.items !== undefined)
@@ -1651,8 +1664,7 @@ async function updateItemIconGroupByNet(itemIconGroupIndex: number, itemIconGrou
     }
   } catch (error) {
     // 出错时尝试从缓存获取
-    const cacheKey = `${ITEM_ICON_LIST_CACHE_KEY_PREFIX}${itemIconGroupId}`
-    const cachedData = ss.get(cacheKey)
+    const cachedData = await getIconListCache(itemIconGroupId)
     if (cachedData) {
       items.value[itemIconGroupIndex].items = buildFolderTree(cachedData)
 
@@ -1819,14 +1831,14 @@ async function handleEditSuccess(item: Panel.ItemInfo) {
   console.log('[主页] 图标编辑成功', item)
   // 清除该分组的图标缓存
   if (item.itemIconGroupId) {
-    ss.remove(`${ITEM_ICON_LIST_CACHE_KEY_PREFIX}${item.itemIconGroupId}`)
+    removeIconListCache(item.itemIconGroupId)
     // 只刷新该分组，保持文件夹弹层内容同步、避免整页闪烁
     await refreshGroupIcons(item.itemIconGroupId)
 
     // 图标/文件夹换过分组时，旧分组也要清缓存并刷新，否则旧分组仍显示它
     const sourceGroupId = editSourceGroupId.value
     if (sourceGroupId && Number(sourceGroupId) !== Number(item.itemIconGroupId)) {
-      ss.remove(`${ITEM_ICON_LIST_CACHE_KEY_PREFIX}${sourceGroupId}`)
+      removeIconListCache(sourceGroupId)
       await refreshGroupIcons(sourceGroupId)
     }
     editSourceGroupId.value = undefined
@@ -1863,7 +1875,7 @@ function handleSaveSort(itemGroup: ItemGroup) {
     saveSort({ itemIconGroupId: itemGroup.id as number, sortItems: saveItems }).then(({ code, msg }) => {
       if (code === 0) {
         // 清除该分组的图标缓存
-        ss.remove(`${ITEM_ICON_LIST_CACHE_KEY_PREFIX}${itemGroup.id}`)
+        removeIconListCache(itemGroup.id as number)
         // itemGroup.sortStatus = false // 不要自动关闭排序状态，允许用户继续操作
       }
       else {

@@ -9,6 +9,7 @@ import { t } from '@/locales'
 import { languageOptions } from '@/utils/defaultData'
 import type { Language } from '@/store/modules/app/helper'
 import { ss } from '@/utils/storage'
+import { clearIconListCache } from '@/utils/storage/iconListCache'
 import {getList as getGroupList} from "@/api/panel/itemIconGroup";
 // const userStore = useUserStore()
 const authStore = useAuthStore()
@@ -42,10 +43,12 @@ ss.remove('searchEngineListCache')
       // 对于以特定前缀开头的键，我们需要使用localStorage API直接访问
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i)
-        if (key && (key.startsWith('moduleConfig_') || key.startsWith('ITEM_ICON_LIST_CACHE_'))) {
+        if (key && key.startsWith('moduleConfig_'))
           ss.remove(key)
-        }
       }
+
+      // 图标列表缓存（localStorage + IndexedDB）一并清掉，避免换账号后看到上一个账号的图标
+      clearIconListCache()
 
       authStore.setToken(res.data.token)
       authStore.setUserInfo(res.data)
